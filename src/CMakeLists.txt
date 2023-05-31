@@ -1,0 +1,5 @@
+add_subdirectory(dwarfparser)
+add_subdirectory(dwarfexpr)
+add_subdirectory(dwarf2line)
+#add_subdirectory(fileformat)
+#add_subdirectory(utils)
