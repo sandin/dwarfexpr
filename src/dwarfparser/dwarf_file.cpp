@@ -316,9 +316,12 @@ bool DwarfFile::loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl, const
 			m_lines.loadAndGetDie(die, lvl);
 
 			// filter
-			if (!filter.cu_name.empty()) {
-				ret = cu->getName() == filter.cu_name;
-			} 
+			if (cu) {
+				//printf("cu: %s\n", cu->getName().c_str());
+				if (!filter.cu_name.empty()) {
+					ret = cu->getName() == filter.cu_name;
+				} 
+			}
 
 			break;
 		}
@@ -338,10 +341,12 @@ bool DwarfFile::loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl, const
 			}
 
 			// filter
-			if (!filter.function_name.empty()) {
-				ret = func->getName() == filter.function_name;
-			} else if (filter.pc != 0) {
-				ret = func->lowAddr <= filter.pc && filter.pc <= func->highAddr;
+			if (func) {
+				if (!filter.function_name.empty()) {
+					ret = func->getName() == filter.function_name;
+				} else if (filter.pc != 0) {
+					ret = func->lowAddr <= filter.pc && filter.pc <= func->highAddr;
+				}
 			}
 
 			break;

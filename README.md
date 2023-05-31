@@ -1,6 +1,6 @@
 # dwarfexpr
 
-Develop some tools using DWARF debug info.
+Develop some tools using DWARF debug info in ELF or dSYM file.
 
 ## Build
 
@@ -20,6 +20,17 @@ $ cmake --build .
 addr2line:
 
 ```
-$ dwarf2line -f -e <elf_symbol_file> <address>
+$ dwarf2line -f -e <elf_or_dsym_file> <address>
+```
+
+dwarfdump:
+
+```
+$ dwarfdump <elf_or_dsym_file>
+```
+
+dump CFI table:
+```
+$ dwarfdump --cfi <elf_or_dsym_file>
 ```
 
