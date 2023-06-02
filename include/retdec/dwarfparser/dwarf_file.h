@@ -91,9 +91,9 @@ class DwarfFile
 	// Private methods.
 	//
 	private:
-		void loadFileCUs(const DwarfFilter& filter);
-		void loadCUtree(Dwarf_Die die, DwarfBaseElement* parent, int lvl, const DwarfFilter& filter);
-		bool loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl, const DwarfFilter& filter);
+		void loadFileCUs();
+		void loadCUtree(Dwarf_Die die, DwarfBaseElement* parent, int lvl);
+		bool loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl);
 		void makeStructTypesUnique();
 
 	//

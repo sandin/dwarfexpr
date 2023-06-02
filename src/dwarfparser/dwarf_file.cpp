@@ -105,7 +105,7 @@ bool DwarfFile::loadFile(const DwarfFilter& filter)
 	// Init register mapping by default values.
 	resources.initMappingDefault();
 
-	loadFileCUs(filter);
+	loadFileCUs();
 	m_hasDwarf = true;
 
 	makeStructTypesUnique();
@@ -152,7 +152,7 @@ bool DwarfFile::hasDwarfInfo()
 /**
  * @brief Iterate over DWARF file's CUs.
  */
-void DwarfFile::loadFileCUs(const DwarfFilter& filter)
+void DwarfFile::loadFileCUs()
 {
 	Dwarf_Unsigned cu_header_length = 0;
 	Dwarf_Half version_stamp = 0;
@@ -196,7 +196,7 @@ void DwarfFile::loadFileCUs(const DwarfFilter& filter)
 		}
 
 		int lvl = 0;
-		loadCUtree(cuDie, nullptr, lvl, filter);
+		loadCUtree(cuDie, nullptr, lvl);
 
 		dwarf_dealloc(m_dbg, cuDie, DW_DLA_DIE);
 	}
@@ -208,12 +208,12 @@ void DwarfFile::loadFileCUs(const DwarfFilter& filter)
  * @param parent Parent element or nullptr.
  * @param lvl   Level (depth) of this die.
  */
-void DwarfFile::loadCUtree(Dwarf_Die inDie, DwarfBaseElement* parent, int lvl, const DwarfFilter& filter)
+void DwarfFile::loadCUtree(Dwarf_Die inDie, DwarfBaseElement* parent, int lvl)
 {
 	Dwarf_Die curDie = inDie;
 	DwarfBaseElement* siblingElement = parent;
 
-	bool include = loadDIE(curDie, siblingElement, lvl, filter);
+	bool include = loadDIE(curDie, siblingElement, lvl);
 
 	// Siblings and childs.
 	while (1)
@@ -232,7 +232,7 @@ void DwarfFile::loadCUtree(Dwarf_Die inDie, DwarfBaseElement* parent, int lvl, c
 			// Has child -> recursion.
 			if(m_res == DW_DLV_OK)
 			{
-				loadCUtree(child, siblingElement, lvl+1, filter);
+				loadCUtree(child, siblingElement, lvl+1);
 			}
 		}
 
@@ -260,7 +260,7 @@ void DwarfFile::loadCUtree(Dwarf_Die inDie, DwarfBaseElement* parent, int lvl, c
 
 		curDie = sib_die;
 		siblingElement = parent;
-		include = loadDIE(curDie, siblingElement, lvl, filter);
+		include = loadDIE(curDie, siblingElement, lvl);
 	}
 }
 
@@ -270,7 +270,7 @@ void DwarfFile::loadCUtree(Dwarf_Die inDie, DwarfBaseElement* parent, int lvl, c
  * @param parent Input parent element. Output newly loaded element or nullptr.
  * @param lvl    Level (depth) of this die.
  */
-bool DwarfFile::loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl, const DwarfFilter& filter)
+bool DwarfFile::loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl)
 {
 	bool ret = true; // true: include, false: exclude
 	DwarfBaseElement* parentElement = parent;
@@ -314,15 +314,6 @@ bool DwarfFile::loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl, const
 			DwarfCU* cu = m_CUs.loadAndGetDie(die, lvl);
 			parent = cu;
 			m_lines.loadAndGetDie(die, lvl);
-
-			// filter
-			if (cu) {
-				//printf("cu: %s\n", cu->getName().c_str());
-				if (!filter.cu_name.empty()) {
-					ret = cu->getName() == filter.cu_name;
-				} 
-			}
-
 			break;
 		}
 
@@ -339,16 +330,6 @@ bool DwarfFile::loadDIE(Dwarf_Die die, DwarfBaseElement* &parent, int lvl, const
 			{
 				activeClass->memberFunctions.push_back(func); // TODO: nejak obojsmerne nastavit.
 			}
-
-			// filter
-			if (func) {
-				if (!filter.function_name.empty()) {
-					ret = func->getName() == filter.function_name;
-				} else if (filter.pc != 0) {
-					ret = func->lowAddr <= filter.pc && filter.pc <= func->highAddr;
-				}
-			}
-
 			break;
 		}
 
