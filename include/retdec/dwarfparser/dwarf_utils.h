@@ -42,9 +42,6 @@ class AttrProcessor;
 
 	bool getDieFromOffset(Dwarf_Debug dbg, Dwarf_Off off, Dwarf_Die &die);
 
-	int getLowAndHighPc(Dwarf_Debug dbg, Dwarf_Die die, bool* have_pc_range, Dwarf_Addr* lowpc_out, Dwarf_Addr* highpc_out, Dwarf_Error* error);
-	int getRnglistsBase(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Off* base_out, Dwarf_Error* error);
-
 /**
  * @class AttrProcessor
  * @brief Helper class providing access to DIE's attributes.

@@ -926,48 +926,5 @@ bool AttrProcessor::geti(Dwarf_Half attrCode, int& ret)
 	return r;
 }
 
-int getLowAndHighPc(Dwarf_Debug dbg, Dwarf_Die die, bool* have_pc_range, Dwarf_Addr* lowpc_out, Dwarf_Addr* highpc_out, Dwarf_Error* error) {
-    Dwarf_Addr hipc = 0;
-    int res = 0;
-    Dwarf_Half form = 0;
-    enum Dwarf_Form_Class formclass = DW_FORM_CLASS_UNKNOWN;
-
-    *have_pc_range = false;
-    res = dwarf_lowpc(die,lowpc_out,error);
-    if (res == DW_DLV_OK) {
-        res = dwarf_highpc_b(die,&hipc,&form,&formclass,error);
-        if (res == DW_DLV_OK) {
-            if (formclass == DW_FORM_CLASS_CONSTANT) {
-                hipc += *lowpc_out;
-            }
-            *highpc_out = hipc;
-            *have_pc_range = true;
-            return DW_DLV_OK;
-        }
-    }
-    /*  Cannot check ranges yet, we don't know the ranges base
-        offset yet. */
-    return DW_DLV_NO_ENTRY;
-}
-
-int getRnglistsBase(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Off* base_out, Dwarf_Error* error) {
-	int res;
-	*base_out = 0;
-
-	Dwarf_Attribute attr;
-	res = dwarf_attr(die, DW_AT_rnglists_base, &attr, error);
-	if (res != DW_DLV_OK) {
-		res = dwarf_attr(die, DW_AT_GNU_ranges_base, &attr, error);
-		if (res != DW_DLV_OK) {
-			dwarf_dealloc(dbg, attr, DW_DLA_LIST);
-			return res;
-		}
-	}
-	// else: res == DW_DLV_OK
-    res = dwarf_global_formref(attr, base_out, error);
-	dwarf_dealloc(dbg, attr, DW_DLA_LIST);
-	return res;
-}
-
 } // namespace dwarfparser
 } // namespace retdec

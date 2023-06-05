@@ -1,14 +1,9 @@
-/**
- * @file src/dwarfparser/dwarf_search.cpp
- * @brief Search Dwarf DIE
- */
-
 #include <algorithm>
 #include <cstdlib>
 #include <sstream>
 
-#include "retdec/dwarfparser/dwarf_utils.h"
-#include "retdec/dwarfparser/dwarf_searcher.h"
+#include "dwarfexpr/dwarf_utils.h" // getLowAndHighPc, getRnglistsBase
+#include "dwarfexpr/dwarf_searcher.h"
 
 /* Adding return codes to DW_DLV, relevant to our purposes here. */
 #define NOT_THIS_CU 10
@@ -17,8 +12,7 @@
 
 using namespace std;
 
-namespace retdec {
-namespace dwarfparser {
+namespace dwarfexpr {
 
 DwarfSearcher::DwarfSearcher(Dwarf_Debug dbg) : m_dbg(dbg) {
 
@@ -34,7 +28,6 @@ int DwarfSearcher::matchCUDie(DwarfCUContext* ctx, Dwarf_Die in_die, Dwarf_Error
     Dwarf_Addr lowpc = 0;
     Dwarf_Addr highpc = 0;
     Dwarf_Off real_ranges_offset = 0;
-    Dwarf_Bool has_ranges_attr = false;
 
 	res = getLowAndHighPc(ctx->dbg, in_die, &have_pc_range, &lowpc, &highpc, errp);
     if (res == DW_DLV_OK) {
@@ -50,61 +43,68 @@ int DwarfSearcher::matchCUDie(DwarfCUContext* ctx, Dwarf_Die in_die, Dwarf_Error
         }
     }
 
-	res = dwarf_hasattr(in_die, DW_AT_ranges, &has_ranges_attr, errp);
+    Dwarf_Attribute ranges_attr;
+    res = dwarf_attr(in_die, DW_AT_ranges, &ranges_attr, errp);
 	if (res == DW_DLV_OK) {
+        res = dwarf_global_formref(ranges_attr, &real_ranges_offset, errp);
+        if (res != DW_DLV_OK) {
+            dwarf_dealloc(ctx->dbg, ranges_attr, DW_DLA_ATTR);
+            return res;
+        }
+        dwarf_dealloc(ctx->dbg, ranges_attr, DW_DLA_ATTR);
+
 		Dwarf_Off cu_ranges_base = 0;
 		res = getRnglistsBase(ctx->dbg, in_die, &cu_ranges_base, errp);
-		if (res == DW_DLV_OK) {
-			/*  We can do get ranges now as we already saw
-				ranges base above (if any). */
-			int resr = 0;
-			Dwarf_Ranges *ranges = 0;
-			Dwarf_Signed  ranges_count =0;
-			Dwarf_Unsigned  byte_count =0;
-			Dwarf_Off     actualoffset = 0;
-			Dwarf_Signed k = 0;
-			bool done = false;
+        /*  We can do get ranges now as we already saw
+            ranges base above (if any). */
+        int resr = 0;
+        Dwarf_Ranges *ranges = 0;
+        Dwarf_Signed  ranges_count =0;
+        Dwarf_Unsigned  byte_count =0;
+        Dwarf_Off     actualoffset = 0;
+        Dwarf_Signed k = 0;
+        bool done = false;
 
-			resr = dwarf_get_ranges_b(ctx->dbg, real_ranges_offset,
-				in_die,
-				&actualoffset,
-				&ranges,
-				&ranges_count,
-				&byte_count,
-				errp);
-			if (resr != DW_DLV_OK) {
-				/* Something badly wrong here. */
-				return res;
-			}
-			for (k = 0; k < ranges_count && !done; ++k) {
-				Dwarf_Ranges *cur = ranges+k;
-				Dwarf_Addr lowpcr = 0;
-				Dwarf_Addr highpcr = 0;
-				Dwarf_Addr baseaddr = cu_ranges_base;
+        resr = dwarf_get_ranges_b(ctx->dbg, real_ranges_offset,
+            in_die,
+            &actualoffset,
+            &ranges,
+            &ranges_count,
+            &byte_count,
+            errp);
+        if (resr != DW_DLV_OK) {
+            /* Something badly wrong here. */
+            return res;
+        }
+        for (k = 0; k < ranges_count && !done; ++k) {
+            Dwarf_Ranges *cur = ranges+k;
+            //Dwarf_Addr lowpcr = 0;
+            //Dwarf_Addr highpcr = 0;
+            Dwarf_Addr baseaddr = cu_ranges_base;
 
-				switch(cur->dwr_type) {
-				case DW_RANGES_ENTRY:
-					lowpc = cur->dwr_addr1 + baseaddr;
-					highpc = cur->dwr_addr2 + baseaddr;
-					if (ctx->target_pc < lowpc ||
-						ctx->target_pc >= highpc) {
-						/* We have no interest in this CU */
-						break;
-					}
-					done = true;
-					res = IN_THIS_CU;
-					break;
-				case DW_RANGES_ADDRESS_SELECTION:
-					baseaddr = cur->dwr_addr2;
-					break;
-				case DW_RANGES_END:
-					break;
-				default:
-					res = DW_DLV_ERROR;
-				}
-			}
-			dwarf_dealloc_ranges(ctx->dbg, ranges, ranges_count);
-		}
+            switch(cur->dwr_type) {
+            case DW_RANGES_ENTRY:
+                lowpc = cur->dwr_addr1 + baseaddr;
+                highpc = cur->dwr_addr2 + baseaddr;
+                //printf("CU range: [0x%llx - 0x%llx]\n", lowpc, highpc);
+                if (ctx->target_pc < lowpc ||
+                    ctx->target_pc >= highpc) {
+                    /* We have no interest in this CU */
+                    break;
+                }
+                done = true;
+                res = IN_THIS_CU;
+                break;
+            case DW_RANGES_ADDRESS_SELECTION:
+                baseaddr = cur->dwr_addr2;
+                break;
+            case DW_RANGES_END:
+                break;
+            default:
+                res = DW_DLV_ERROR;
+            }
+        }
+        dwarf_dealloc_ranges(ctx->dbg, ranges, ranges_count);
 	}
 	return res;
 }
@@ -114,8 +114,8 @@ int DwarfSearcher::matchFuncDie(DwarfCUContext* ctx, Dwarf_Die in_die, Dwarf_Err
     bool have_pc_range = false;
     Dwarf_Addr lowpc = 0;
     Dwarf_Addr highpc = 0;
-    Dwarf_Off real_ranges_offset = 0;
-    Dwarf_Bool has_ranges_attr = false;
+    //Dwarf_Off real_ranges_offset = 0;
+    //Dwarf_Bool has_ranges_attr = false;
 
 	res = getLowAndHighPc(ctx->dbg, in_die, &have_pc_range, &lowpc, &highpc, errp);
     if (res == DW_DLV_OK) {
@@ -357,5 +357,4 @@ bool DwarfSearcher::searchFunction(Dwarf_Addr pc, Dwarf_Die* out_cu_die, Dwarf_D
 	return false;
 }
 
-} // namespace dwarfparser
-} // namespace retdec
+} // namespace dwarfexpr

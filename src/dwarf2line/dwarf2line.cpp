@@ -3,12 +3,14 @@
 #include <string.h>
 #include <vector>
 #include <cstdint>
+#include <limits> // numeric_limits
 
-#include "retdec/dwarfparser/dwarf_file.h"
-#include "retdec/dwarfparser/dwarf_searcher.h"
+#include "dwarfexpr/dwarf_utils.h" // getDeclFileAndLine
+#include "dwarfexpr/dwarf_searcher.h"
 
+constexpr Dwarf_Unsigned MAX_DWARF_UNSIGNED = std::numeric_limits<Dwarf_Unsigned>::max();
 
-using namespace retdec::dwarfparser;
+using namespace dwarfexpr;
 
 const char USAGE[] = "USAGE: dwarf2line [options] [addresses]\n"
                      " Options:\n"
@@ -64,7 +66,7 @@ int main(int argc, char** argv)
     if (res == DW_DLV_ERROR) {
         printf("Giving up, cannot do DWARF processing of %s "
             "dwarf err %llx %s\n",
-            input,
+            input.c_str(),
             dwarf_errno(error),
             dwarf_errmsg(error));
         dwarf_dealloc_error(dbg,error);
@@ -72,7 +74,7 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
     if (res == DW_DLV_NO_ENTRY) {
-        printf("Giving up, file %s not found\n", input);
+        printf("Giving up, file %s not found\n", input.c_str());
         exit(EXIT_FAILURE);
     }
 
@@ -80,35 +82,35 @@ int main(int argc, char** argv)
     for (uint64_t address : addresses) {
         Dwarf_Die cu_die;
         Dwarf_Die func_die;
-        Dwarf_Error* errp;
+        Dwarf_Error* errp = nullptr;
         bool found = searcher.searchFunction(address, &cu_die, &func_die, errp);
         if (found) {
-            // TODO: 
+            if (print_func_name) {
+                char* name = nullptr;   
+                res = dwarf_diename(func_die, &name, errp);
+                if (res == DW_DLV_OK) {
+                    printf("%s\n", name);
+                }
+            }
+
+            std::string file_name = getDeclFile(dbg, cu_die, func_die, "?");
+            Dwarf_Unsigned line_number = getDeclLine(dbg, func_die, MAX_DWARF_UNSIGNED);
+            if (line_number != MAX_DWARF_UNSIGNED) {
+                printf("%s:%llu\n", file_name.c_str(), line_number);
+            } else {
+                printf("%s:?\n", file_name.c_str());
+            }
+
             dwarf_dealloc(dbg, cu_die, DW_DLA_DIE);
             dwarf_dealloc(dbg, func_die, DW_DLA_DIE);
+        } else {
+            printf("Not found.\n");
         }
-        /*
-        for (DwarfFunction* func : *dwarf_file.getFunctions()) {
-            if (func->lowAddr <= address && address < func->highAddr) {
-                if (print_func_name) {
-                    printf("%s\n", func->getName().c_str());
-                }
-                printf("%s:%llu\n", func->file.c_str(), func->line);
-            }
-        }
-        */
     }
 
     res = dwarf_finish(dbg);
     if (res != DW_DLV_OK) {
         printf("dwarf_finish failed!\n");
     }
-    return 0;
-
-
-
-
- 
-
     return 0;
 }

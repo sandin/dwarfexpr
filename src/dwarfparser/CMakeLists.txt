@@ -9,8 +9,6 @@ set(DWARFPARSER_SOURCES
 	dwarf_types.cpp
 	dwarf_utils.cpp
 	dwarf_vars.cpp
-
-	dwarf_searcher.cpp
 )
 
 add_library(retdec-dwarfparser STATIC ${DWARFPARSER_SOURCES})

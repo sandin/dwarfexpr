@@ -1,18 +1,12 @@
-/**
- * @file include/retdec/dwarfparser/dwarf_search.h
- * @brief Search dwarf die
- */
-
-#ifndef RETDEC_DWARFPARSER_DWARF_SEARCH_H
-#define RETDEC_DWARFPARSER_DWARF_SEARCH_H
+#ifndef DWARFEXPR_DWARF_SEARCHER_H
+#define DWARFEXPR_DWARF_SEARCHER_H
 
 #include <string>
 
 #include <libdwarf/dwarf.h>
 #include <libdwarf/libdwarf.h>
 
-namespace retdec {
-namespace dwarfparser {
+namespace dwarfexpr {
 
 class DwarfCUContext {
 	public:
@@ -76,7 +70,6 @@ class DwarfSearcher {
 
 }; // class DwarfSearcher
 
-} // namespace dwarfparser
-} // namespace retdec
+} // namespace dwarfexpr
 
-#endif // RETDEC_DWARFPARSER_DWARF_SEARCH_H
+#endif // DWARFEXPR_DWARF_SEARCHER_H
