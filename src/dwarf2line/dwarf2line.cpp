@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "retdec/dwarfparser/dwarf_file.h"
+#include "retdec/dwarfparser/dwarf_searcher.h"
 
 
 using namespace retdec::dwarfparser;
@@ -49,11 +50,44 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    DwarfFile dwarf_file(input);
+    Dwarf_Debug dbg = nullptr;
+    #define PATH_LEN 2000
+    char real_path[PATH_LEN];
+    Dwarf_Error error;
+    Dwarf_Handler errhand = 0;
+    Dwarf_Ptr errarg = 0;
 
+    int res = res = dwarf_init_path(input.c_str(),
+        real_path,
+        PATH_LEN,
+        DW_GROUPNUMBER_ANY,errhand,errarg,&dbg,&error);
+    if (res == DW_DLV_ERROR) {
+        printf("Giving up, cannot do DWARF processing of %s "
+            "dwarf err %llx %s\n",
+            input,
+            dwarf_errno(error),
+            dwarf_errmsg(error));
+        dwarf_dealloc_error(dbg,error);
+        dwarf_finish(dbg);
+        exit(EXIT_FAILURE);
+    }
+    if (res == DW_DLV_NO_ENTRY) {
+        printf("Giving up, file %s not found\n", input);
+        exit(EXIT_FAILURE);
+    }
+
+    DwarfSearcher searcher(dbg);
     for (uint64_t address : addresses) {
-        DwarfFilter filter = {"", "", address};
-        dwarf_file.loadFile(filter);
+        Dwarf_Die cu_die;
+        Dwarf_Die func_die;
+        Dwarf_Error* errp;
+        bool found = searcher.searchFunction(address, &cu_die, &func_die, errp);
+        if (found) {
+            // TODO: 
+            dwarf_dealloc(dbg, cu_die, DW_DLA_DIE);
+            dwarf_dealloc(dbg, func_die, DW_DLA_DIE);
+        }
+        /*
         for (DwarfFunction* func : *dwarf_file.getFunctions()) {
             if (func->lowAddr <= address && address < func->highAddr) {
                 if (print_func_name) {
@@ -62,7 +96,19 @@ int main(int argc, char** argv)
                 printf("%s:%llu\n", func->file.c_str(), func->line);
             }
         }
+        */
     }
+
+    res = dwarf_finish(dbg);
+    if (res != DW_DLV_OK) {
+        printf("dwarf_finish failed!\n");
+    }
+    return 0;
+
+
+
+
+ 
 
     return 0;
 }

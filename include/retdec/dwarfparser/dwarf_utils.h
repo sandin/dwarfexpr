@@ -19,6 +19,7 @@ class DwarfType;
 class DwarfLocationDesc;
 
 // Extern forward declarations.
+class DwarfFile;
 
 // Locale forward declarations.
 class AttrProcessor;
