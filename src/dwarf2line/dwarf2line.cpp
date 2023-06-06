@@ -4,8 +4,9 @@
 #include <vector>
 #include <cstdint>
 #include <limits> // numeric_limits
+#include <utility> // std::make_pair
 
-#include "dwarfexpr/dwarf_utils.h" // getDeclFileAndLine
+#include "dwarfexpr/dwarf_utils.h" // getDeclFile, getDeclLine, dumpDIE
 #include "dwarfexpr/dwarf_searcher.h"
 
 constexpr Dwarf_Unsigned MAX_DWARF_UNSIGNED = std::numeric_limits<Dwarf_Unsigned>::max();
@@ -15,13 +16,15 @@ using namespace dwarfexpr;
 const char USAGE[] = "USAGE: dwarf2line [options] [addresses]\n"
                      " Options:\n"
                      "  -e --exe <executable>   Set the input filename\n"
-                     "  -f --functions          Show function names\n";
+                     "  -f --functions          Show function names\n"
+                     "  -C --demangle           Demangle function names\n";
  
 int main(int argc, char** argv) 
 {
     // parse args
     std::string input;
     bool print_func_name = false;
+    bool demangle = false;
     std::vector<uint64_t> addresses;
     for (int i = 1; i< argc; ++i) {
         if (!strcmp(argv[i], "-e") || !strcmp(argv[i], "--exe")) {
@@ -32,6 +35,8 @@ int main(int argc, char** argv)
             input = argv[i];
         } else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--functions")) {
             print_func_name = true;
+        } else if (!strcmp(argv[i], "-C") || !strcmp(argv[i], "--demangle")) {
+            demangle = true;
         } else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
             printf("%s", USAGE);
             return 0;
@@ -85,16 +90,17 @@ int main(int argc, char** argv)
         Dwarf_Error* errp = nullptr;
         bool found = searcher.searchFunction(address, &cu_die, &func_die, errp);
         if (found) {
+            //dumpDIE(dbg, cu_die);
+            //dumpDIE(dbg, func_die);
+
             if (print_func_name) {
-                char* name = nullptr;   
-                res = dwarf_diename(func_die, &name, errp);
-                if (res == DW_DLV_OK) {
-                    printf("%s\n", name);
-                }
+                std::string function_name = getFunctionName(dbg, func_die, demangle, "?");
+                printf("%s\n", function_name.c_str());
             }
 
-            std::string file_name = getDeclFile(dbg, cu_die, func_die, "?");
-            Dwarf_Unsigned line_number = getDeclLine(dbg, func_die, MAX_DWARF_UNSIGNED);
+            std::pair<std::string, Dwarf_Unsigned> file_line = getFileNameAndLineNumber(dbg, cu_die, address, "?", MAX_DWARF_UNSIGNED);
+            std::string file_name = file_line.first;
+            Dwarf_Unsigned line_number = file_line.second;
             if (line_number != MAX_DWARF_UNSIGNED) {
                 printf("%s:%llu\n", file_name.c_str(), line_number);
             } else {

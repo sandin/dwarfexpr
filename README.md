@@ -22,15 +22,3 @@ addr2line:
 ```
 $ dwarf2line -f -e <elf_or_dsym_file> <address>
 ```
-
-dwarfdump:
-
-```
-$ dwarfdump <elf_or_dsym_file>
-```
-
-dump CFI table:
-```
-$ dwarfdump --cfi <elf_or_dsym_file>
-```
-
