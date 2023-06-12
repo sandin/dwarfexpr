@@ -5,15 +5,11 @@
 namespace dwarfexpr {
 
 bool DwarfVar::load() {
+  if (!this->DwarfTag::load()) {
+    return false;
+  }
+
   Dwarf_Error err = nullptr;
-  if (!getDieFromOffset(dbg_, offset_, die_)) {
-    return false;
-  }
-
-  if (dwarf_tag(die_, &tag_, &err) != DW_DLV_OK) {
-    return false;
-  }
-
   const char* tag_name = nullptr;
   dwarf_get_TAG_name(tag_, &tag_name);
 
@@ -26,6 +22,13 @@ bool DwarfVar::load() {
   type_ = loadType();
   if (!type_) {
     return false;
+  }
+
+  printf("load location for tag 0x%llx\n", offset_);
+  location_ = loadLocation();
+  if (!location_) {
+    printf("Warning: can not find DW_AT_location attr for tag [0x%llx %s] %s\n",
+           offset_, tag_name, var_name);
   }
 
   return true;
@@ -46,6 +49,37 @@ DwarfType* DwarfVar::loadType() {
       }
       delete type;
     }
+  }
+  return nullptr;
+}
+
+DwarfLocation* DwarfVar::loadLocation() {
+  Dwarf_Error err = nullptr;
+  // Get address size.
+  Dwarf_Half addr_size = 0;
+  if (dwarf_get_die_address_size(die_, &addr_size, &err) != DW_DLV_OK) {
+    return nullptr;
+  }
+
+  // Get offset size
+  Dwarf_Half offset_size = 0;
+  /*
+  if (dwarf_get_offset_size(dbg_, &offset_size, &err) != DW_DLV_OK) {
+    return nullptr;
+  }
+  */
+  Dwarf_Half version = 2;
+  if (dwarf_get_version_of_die(die_, &version, &offset_size) != DW_DLV_OK) {
+    return nullptr;
+  }
+
+  Dwarf_Attribute loc_attr;
+  if (dwarf_attr(die_, DW_AT_location, &loc_attr, &err) == DW_DLV_OK) {
+    DwarfLocation* loc = new DwarfLocation(dbg_, /* move */ loc_attr, addr_size, offset_size, version);
+    if (loc->load()) {
+      return loc;
+    }
+    delete loc;  // dealloc loc_attr
   }
   return nullptr;
 }

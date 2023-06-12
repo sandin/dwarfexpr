@@ -103,8 +103,10 @@ int main(int argc, char** argv) {
     Dwarf_Error* errp = nullptr;
     bool found = searcher.searchFunction(address, &cu_die, &func_die, errp);
     if (found) {
-      // dumpDIE(dbg, cu_die);
-      dumpDIE(dbg, func_die);
+      if (debug) {
+        dumpDIE(dbg, cu_die);
+        dumpDIE(dbg, func_die);
+      }
 
       if (print_func_name) {
         std::string function_name =

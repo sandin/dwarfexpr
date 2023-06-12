@@ -6,12 +6,7 @@
 namespace dwarfexpr {
 
 bool DwarfType::load() {
-  Dwarf_Error err = nullptr;
-  if (!getDieFromOffset(dbg_, offset_, die_)) {
-    return false;
-  }
-
-  if (dwarf_tag(die_, &tag_, &err) != DW_DLV_OK) {
+  if (!this->DwarfTag::load()) {
     return false;
   }
 
@@ -44,6 +39,7 @@ bool DwarfType::load() {
       // DW_AT_enum_class	(true)
       return true;
     }
+    // TODO: case DW_TAG_array_type:  // passthrough
     case DW_TAG_typedef:  // passthrough
     case DW_TAG_pointer_type: {
       size_ = 8;  // TODO: 32-bit/64-bit

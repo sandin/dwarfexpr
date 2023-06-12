@@ -2,8 +2,10 @@ set(DWARFEXPR_SOURCES
 	dwarf_searcher.cpp
 	dwarf_utils.cpp
 	dwarf_attrs.cpp
+	dwarf_tag.cpp
 	dwarf_types.cpp
 	dwarf_vars.cpp
+	dwarf_location.cpp
 )
 
 add_library(dwarfexpr STATIC ${DWARFEXPR_SOURCES})
