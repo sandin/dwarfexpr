@@ -1,5 +1,7 @@
 #include "dwarfexpr/dwarf_vars.h"
 
+#include <sstream>
+
 #include "dwarfexpr/dwarf_utils.h"
 
 namespace dwarfexpr {
@@ -24,7 +26,6 @@ bool DwarfVar::load() {
     return false;
   }
 
-  printf("load location for tag 0x%llx\n", offset_);
   location_ = loadLocation();
   if (!location_) {
     printf("Warning: can not find DW_AT_location attr for tag [0x%llx %s] %s\n",
@@ -54,34 +55,78 @@ DwarfType* DwarfVar::loadType() {
 }
 
 DwarfLocation* DwarfVar::loadLocation() {
-  Dwarf_Error err = nullptr;
-  // Get address size.
-  Dwarf_Half addr_size = 0;
-  if (dwarf_get_die_address_size(die_, &addr_size, &err) != DW_DLV_OK) {
-    return nullptr;
-  }
+  return DwarfLocation::loadFromDieAttr(dbg_, die_, DW_AT_location);
+}
 
-  // Get offset size
-  Dwarf_Half offset_size = 0;
-  /*
-  if (dwarf_get_offset_size(dbg_, &offset_size, &err) != DW_DLV_OK) {
-    return nullptr;
+DwarfVar::DwarfValue DwarfVar::evalValue(Dwarf_Addr pc, Dwarf_Addr cuLowAddr,
+                                         Dwarf_Addr cuHighAddr,
+                                         DwarfLocation* frameBaseLoc,
+                                         RegisterProvider registers,
+                                         MemoryProvider memory) const {
+  if (location_) {
+    DwarfLocation::LocValue loc = location_->evalValue(
+        pc, cuLowAddr, cuHighAddr, frameBaseLoc, registers, memory);
+    if (loc.type == DwarfLocation::LocValue::Type::kValue) {
+      return formatValue(type_, reinterpret_cast<char*>(&loc.value.value), sizeof(Dwarf_Signed));
+    } else if (loc.type == DwarfLocation::LocValue::Type::kAddress) {
+      return evalValueAtLoc(type_, loc.value.addr, memory);
+    }  // else loc.type == DwarfLocation::LocValue::Type::kInvalid
   }
-  */
-  Dwarf_Half version = 2;
-  if (dwarf_get_version_of_die(die_, &version, &offset_size) != DW_DLV_OK) {
-    return nullptr;
-  }
+  return "unknown";
+}
 
-  Dwarf_Attribute loc_attr;
-  if (dwarf_attr(die_, DW_AT_location, &loc_attr, &err) == DW_DLV_OK) {
-    DwarfLocation* loc = new DwarfLocation(dbg_, /* move */ loc_attr, addr_size, offset_size, version);
-    if (loc->load()) {
-      return loc;
+DwarfVar::DwarfValue DwarfVar::evalValueAtLoc(DwarfType* type, Dwarf_Addr addr,
+                                              MemoryProvider memory) const {
+  char* buf = nullptr;
+  size_t buf_size = 0;
+  if (addr != 0) {
+    size_t size = type->size();
+    bool found = memory(addr, size, &buf, &buf_size);
+    if (!found) {
+      printf("Error: can not read memory at addr: 0x%llx, size=0x%zx\n", addr,
+            size);
+      std::stringstream ss;
+      ss << "unknown(addr=" << std::hex << addr << ")";
+      return ss.str();
     }
-    delete loc;  // dealloc loc_attr
   }
-  return nullptr;
+  return formatValue(type, buf, buf_size);
+}
+
+DwarfVar::DwarfValue DwarfVar::formatValue(DwarfType* type, char* buf,
+                                           size_t buf_size) const {
+  if (type->tag() == DW_TAG_pointer_type) {
+    if (buf == nullptr) {
+      return "nullptr";
+    }
+    uint64_t ptr_val =
+        *reinterpret_cast<uint64_t*>(buf);  // TODO: little endian
+    if (ptr_val == 0) {
+      return "nullptr";
+    }
+    std::stringstream ss;
+    ss << "0x" << std::hex << ptr_val;
+    return ss.str();
+  }
+
+  if (buf == nullptr) {
+    return "0";
+  }
+  return hexstring(buf, buf_size);
+}
+
+void DwarfVar::dump() const {
+  this->DwarfTag::dump();
+
+  printf("name: %s\n", name_.c_str());
+  if (type_) {
+    printf("type:\n");
+    type_->dump();
+  }
+  if (location_) {
+    printf("location:\n");
+    location_->dump();
+  }
 }
 
 };  // namespace dwarfexpr

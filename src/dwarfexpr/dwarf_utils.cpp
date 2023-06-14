@@ -4,6 +4,8 @@
 #include <string.h>  // strdup
 
 #include <cstdlib>
+#include <iomanip>  // std::setfill std::setw
+#include <sstream>
 
 using namespace std;
 
@@ -595,6 +597,15 @@ void dumpDIE(Dwarf_Debug dbg, Dwarf_Die die) {
     dwarf_dealloc(dbg, attrlist, DW_DLA_LIST);
   }
   printf("\n");
+}
+
+std::string hexstring(char* buf, size_t buf_size) {
+  std::stringstream ss;
+  for (size_t i = 0; i < buf_size; ++i) {
+    ss << std::setfill('0') << std::setw(2) << std::hex
+       << (0xff & buf[i]) << " ";
+  }
+  return ss.str();
 }
 
 }  // namespace dwarfexpr

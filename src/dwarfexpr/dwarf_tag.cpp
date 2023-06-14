@@ -17,4 +17,8 @@ bool DwarfTag::load() {
   return true;
 }
 
+void DwarfTag::dump() const {
+  printf("0x%llx: %s\n", offset_, tagName().c_str());
+}
+
 };  // namespace dwarfexpr

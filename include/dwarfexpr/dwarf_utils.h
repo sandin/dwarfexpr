@@ -70,6 +70,7 @@ scope_exit<typename std::decay<Callable>::type> make_scope_exit(Callable&& F) {
 constexpr Dwarf_Unsigned MAX_DWARF_UNSIGNED =
     std::numeric_limits<Dwarf_Unsigned>::max();
 constexpr Dwarf_Off MAX_DWARF_OFF = std::numeric_limits<Dwarf_Off>::max();
+constexpr Dwarf_Addr MAX_DWARF_ADDR = std::numeric_limits<Dwarf_Addr>::max();
 
 int getLowAndHighPc(Dwarf_Debug dbg, Dwarf_Die die, bool* have_pc_range,
                     Dwarf_Addr* lowpc_out, Dwarf_Addr* highpc_out,
@@ -96,6 +97,8 @@ void walkDIE(Dwarf_Debug dbg, Dwarf_Die parent_die, Dwarf_Die die, int cur_lv,
              int max_lv, void* ctx, DwarfDIEWalker walker);
 
 void dumpDIE(Dwarf_Debug dbg, Dwarf_Die die);
+
+std::string hexstring(char* buf, size_t buf_size);
 
 }  // namespace dwarfexpr
 

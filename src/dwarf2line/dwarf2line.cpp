@@ -3,16 +3,20 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>  // numeric_limits
+#include <sstream>
 #include <string>
 #include <utility>  // std::make_pair
 #include <vector>
 
+#include "dwarf_context.h"
+#include "dwarfexpr/dwarf_attrs.h"
 #include "dwarfexpr/dwarf_searcher.h"
 #include "dwarfexpr/dwarf_types.h"
 #include "dwarfexpr/dwarf_utils.h"
 #include "dwarfexpr/dwarf_vars.h"
 
 using namespace dwarfexpr;
+using namespace dwarf2line;
 
 const char USAGE[] =
     "USAGE: dwarf2line [options] [addresses]\n"
@@ -23,11 +27,73 @@ const char USAGE[] =
     "\n"
     "  -l --locals             Show local variables\n"
     "  -p --params             Show function params\n"
+    "  -c --context            Set the dwarf context file\n"
     "  -v --verbose            Show debug log\n";
+
+static DwarfContext* gDwarfContext = nullptr;
+
+DwarfContextFrame* getFirstThreadFrame(DwarfContext* context) {
+  if (context != nullptr && context->header.threads_size > 0) {
+    DwarfContextThread& thread = context->threads[0];
+    if (thread.header.frames_size > 0) {
+      return &thread.frames[0];
+    }
+  }
+  return nullptr;
+}
+
+int64_t register_provider(int reg_num) {
+  uint32_t regs_size = 0;
+  uint64_t* regs = nullptr;
+
+  DwarfContextFrame* frame = getFirstThreadFrame(gDwarfContext);
+  if (frame != nullptr) {
+    regs_size = frame->regs.size();
+    regs = frame->regs.data();
+  }
+
+  if (regs != nullptr && 0 <= reg_num &&
+      reg_num < static_cast<int>(regs_size)) {
+    printf("read reg%d => 0x%lx\n", reg_num, regs[reg_num]);
+    return regs[reg_num];
+  }
+  return 0;
+}
+bool memory_provider(uint64_t addr, size_t size, char** out_buf,
+                     size_t* out_buf_size) {
+  *out_buf = nullptr;
+  *out_buf_size = 0;
+
+  uint64_t stack_memory_base_addr = 0;
+  uint32_t stack_memory_size = 0;
+  unsigned char* stack_memory = nullptr;
+  DwarfContextFrame* frame = getFirstThreadFrame(gDwarfContext);
+  if (frame != nullptr) {
+    stack_memory_base_addr = frame->stack_memory_base_addr;
+    stack_memory_size = frame->stack_memory.size();
+    stack_memory = frame->stack_memory.data();
+  }
+
+  char* ptr = reinterpret_cast<char*>(&stack_memory[0]);
+  uint64_t start_addr = stack_memory_base_addr;
+  uint64_t end_addr = stack_memory_base_addr + stack_memory_size;
+  if (start_addr <= addr && addr < end_addr && addr + size < end_addr) {
+    uint64_t offset = addr - start_addr;
+    *out_buf_size = size;
+    *out_buf = ptr + offset;
+    //*out_buf = static_cast<char*>(malloc(size));
+    // memcpy(*out_buf, ptr + offset, size);
+    return true;
+  }
+
+  return false;
+}
 
 int main(int argc, char** argv) {
   // parse args
   std::string input;
+  std::string ctx_file;
+  bool eval_value = false;
   bool print_func_name = false;
   bool demangle = false;
   bool show_locals = false;
@@ -38,17 +104,26 @@ int main(int argc, char** argv) {
     if (!strcmp(argv[i], "-e") || !strcmp(argv[i], "--exe")) {
       ++i;
       if (i >= argc) {
-        printf("Error: missing `-e` arg.\n");
+        printf("Error: missing the value of `-e` arg.\n");
       }
       input = argv[i];
-    } else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--functions")) {
-      print_func_name = true;
-    } else if (!strcmp(argv[i], "-C") || !strcmp(argv[i], "--demangle")) {
-      demangle = true;
+    } else if (!strcmp(argv[i], "-c") || !strcmp(argv[i], "--context")) {
+      ++i;
+      if (i >= argc) {
+        printf("Error: missing the value of `-c` arg.\n");
+      }
+      ctx_file = argv[i];
+      eval_value = true;
+      show_locals = true;
+      show_params = true;
     } else if (!strcmp(argv[i], "-l") || !strcmp(argv[i], "--locals")) {
       show_locals = true;
     } else if (!strcmp(argv[i], "-p") || !strcmp(argv[i], "--params")) {
       show_params = true;
+    } else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--functions")) {
+      print_func_name = true;
+    } else if (!strcmp(argv[i], "-C") || !strcmp(argv[i], "--demangle")) {
+      demangle = true;
     } else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--verbose")) {
       debug = true;
     } else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
@@ -94,6 +169,17 @@ int main(int argc, char** argv) {
   if (res == DW_DLV_NO_ENTRY) {
     printf("Giving up, file %s not found\n", input.c_str());
     exit(EXIT_FAILURE);
+  }
+
+  if (eval_value) {
+    gDwarfContext = new DwarfContext();
+    if (!load_dwarf_context_file(ctx_file.c_str(), gDwarfContext)) {
+      printf("Error: can not load dwarf contxt file: %s\n", ctx_file.c_str());
+      delete gDwarfContext;
+      gDwarfContext = nullptr;
+      // DO NOT return, keep going
+    }
+    dump_dwarf_context(gDwarfContext);
   }
 
   DwarfSearcher searcher(dbg);
@@ -160,28 +246,47 @@ int main(int argc, char** argv) {
                     }
                   }
                 });  // end walkDIE
+
+        Dwarf_Addr cu_low_addr = getAttrValueAddr(dbg, cu_die, DW_AT_low_pc, 0);
+        Dwarf_Addr cu_high_addr =
+            getAttrValueAddr(dbg, cu_die, DW_AT_high_pc, 0);
+        DwarfLocation* func_frame_base =
+            DwarfLocation::loadFromDieAttr(dbg, func_die, DW_AT_frame_base);
+
         printf("params:\n");
         for (const DwarfVar* var : params) {
-          DwarfType* type = var->type();
           if (debug) {
-            printf("  0x%llx: %s ", var->offset(), var->tagName().c_str());
-            printf("  0x%llx: %s ", type->offset(), type->tagName().c_str());
+            var->dump();
           }
-          printf("  %s %s (%zu bytes)\n", type->name().c_str(),
-                 var->name().c_str(), type->size());
+          DwarfType* type = var->type();
+          DwarfVar::DwarfValue value =
+              gDwarfContext != nullptr
+                  ? var->evalValue(address, cu_low_addr, cu_high_addr,
+                                   func_frame_base, register_provider,
+                                   memory_provider)
+                  : "..";
+          printf("  %s %s (%zu bytes) = %s\n", type->name().c_str(),
+                 var->name().c_str(), type->size(), value.c_str());
           delete var;
+          printf("\n");
         }
 
         printf("locals:\n");
         for (const DwarfVar* var : locals) {
-          DwarfType* type = var->type();
           if (debug) {
-            printf("  0x%llx: %s ", var->offset(), var->tagName().c_str());
-            printf("  0x%llx: %s ", type->offset(), type->tagName().c_str());
+            var->dump();
           }
-          printf("  %s %s (%zu bytes)\n", type->name().c_str(),
-                 var->name().c_str(), type->size());
+          DwarfType* type = var->type();
+          DwarfVar::DwarfValue value =
+              gDwarfContext != nullptr
+                  ? var->evalValue(address, cu_low_addr, cu_high_addr,
+                                   func_frame_base, register_provider,
+                                   memory_provider)
+                  : "..";
+          printf("  %s %s (%zu bytes) = %s\n", type->name().c_str(),
+                 var->name().c_str(), type->size(), value.c_str());
           delete var;
+          printf("\n");
         }
       }
 
@@ -192,6 +297,9 @@ int main(int argc, char** argv) {
     }
   }
 
+  if (gDwarfContext) {
+    delete gDwarfContext;
+  }
   res = dwarf_finish(dbg);
   if (res != DW_DLV_OK) {
     printf("dwarf_finish failed!\n");

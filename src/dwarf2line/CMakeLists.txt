@@ -1,4 +1,5 @@
 set(DWARF2LINE_SOURCES
+	dwarf_context.cpp
 	dwarf2line.cpp
 )
 

@@ -28,6 +28,7 @@ class DwarfType : public DwarfTag {
   }
 
   virtual bool load() override;
+  virtual void dump() const override;
 
   virtual std::string name() const;
   virtual size_t size() const;

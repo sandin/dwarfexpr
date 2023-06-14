@@ -116,4 +116,8 @@ size_t DwarfType::size() const {
   }
 }
 
+void DwarfType::dump() const {
+  this->DwarfTag::dump();
+}
+
 };  // namespace dwarfexpr

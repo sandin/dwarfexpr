@@ -23,6 +23,7 @@ class DwarfTag {
   }
 
   virtual bool load();
+  virtual void dump() const;
 
   Dwarf_Half tag() const { return tag_; }
   Dwarf_Off offset() const { return offset_; }
