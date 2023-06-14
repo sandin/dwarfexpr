@@ -90,14 +90,11 @@ locals:
 
 Source code of the crash function:
 ```c++
-void    ImGui_ImplVulkan_DestroyDeviceObjects()
-{
-    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
-    ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
-    ImGui_ImplVulkanH_DestroyWindowRenderBuffers(v->Device, &bd->MainWindowRenderBuffers, v->Allocator);  // line: 928
-
-    //...
-}
+924 void    ImGui_ImplVulkan_DestroyDeviceObjects()
+925 {
+926     ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+927     ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
+928     ImGui_ImplVulkanH_DestroyWindowRenderBuffers(v->Device, &bd->MainWindowRenderBuffers, v->Allocator);
 ```
 
 With the restored local variables, we can easily find the reason for the crash, which is because the `bd` local variable is a null pointer.

@@ -232,12 +232,12 @@ DwarfLocation::LocValue DwarfLocation::evaluateExpression(
     Dwarf_Half reg_num = opcode - DW_OP_reg0;
     uint64_t reg_val = registers(reg_num);
     printf("op=%s reg%d = 0x%lx\n", opcode_name, reg_num, reg_val);
-    return LocValue{LocValue::Type::kAddress, {reg_val}};
+    return LocValue{LocValue::Type::kValue, {reg_val}};
   } else if (opcode == DW_OP_regx) {
     Dwarf_Half reg_num = expr.atoms[0].op1;
     uint64_t reg_val = registers(reg_num);
     printf("op=%s reg%d = 0x%lx\n", opcode_name, reg_num, reg_val);
-    return LocValue{LocValue::Type::kAddress, {reg_val}};
+    return LocValue{LocValue::Type::kValue, {reg_val}};
   }
 
   std::stack<Dwarf_Signed> mystack;

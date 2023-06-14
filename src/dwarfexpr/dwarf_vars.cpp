@@ -1,6 +1,7 @@
 #include "dwarfexpr/dwarf_vars.h"
 
 #include <sstream>
+#include <algorithm> // std::min
 
 #include "dwarfexpr/dwarf_utils.h"
 
@@ -112,7 +113,7 @@ DwarfVar::DwarfValue DwarfVar::formatValue(DwarfType* type, char* buf,
   if (buf == nullptr) {
     return "0";
   }
-  return hexstring(buf, buf_size);
+  return hexstring(buf, std::min(buf_size, type->size()));
 }
 
 void DwarfVar::dump() const {
