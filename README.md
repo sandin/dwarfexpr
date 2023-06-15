@@ -88,7 +88,7 @@ locals:
   ImGui_ImplVulkan_InitInfo* v (8 bytes) = nullptr
 ```
 
-Source code of the crash function:
+Source code of the crashed function:
 ```c++
 924 void    ImGui_ImplVulkan_DestroyDeviceObjects()
 925 {

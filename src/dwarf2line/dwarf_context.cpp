@@ -76,7 +76,7 @@ void dump_dwarf_context(DwarfContext* ctx) {
   printf("version: %d\n", ctx->header.version);
   printf("arch: %d(%s)\n", ctx->header.arch,
          ctx->header.arch == 0 ? "32-bit" : "64-bit");
-  printf("threads_size: %d(%zu)\n", ctx->header.threads_size);
+  printf("threads_size: %d\n", ctx->header.threads_size);
   for (const DwarfContextThread& thread : ctx->threads) {
     printf(T "Thread tid: %d\n", thread.header.tid);
     printf(T "crashed: %d\n", thread.header.crashed);

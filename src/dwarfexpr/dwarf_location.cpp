@@ -1,6 +1,7 @@
 #include "dwarfexpr/dwarf_location.h"
 
 #include <stack>
+#include <cstdlib> // abs
 
 #include "dwarfexpr/dwarf_utils.h"
 
@@ -384,7 +385,331 @@ DwarfLocation::LocValue DwarfLocation::evaluateExpression(
         // Operations manipulate the DWARF stack.
         //
 
-        // TODO
+        // Duplicates the value at the top of the stack.
+      case DW_OP_dup:
+        if (mystack.empty()) {
+          return LocValue();
+        }
+        mystack.push(mystack.top());
+        break;
+
+      // Pops the value at the top of the stack
+      case DW_OP_drop:
+        if (mystack.empty()) {
+          return LocValue();
+        }
+        mystack.pop();
+        break;
+
+        // Entry with specified index is copied at the top.
+      case DW_OP_pick: {
+        Dwarf_Unsigned idx = a.op1;
+        std::stack<Dwarf_Signed> t;
+        if (mystack.size() < (idx + 1)) {
+          // out of index
+          return LocValue();
+        }
+
+        for (unsigned i = 0; i < idx; i++) {
+          t.push(mystack.top());
+          mystack.pop();
+        }
+
+        Dwarf_Signed pick = mystack.top();
+
+        for (unsigned i = 0; i < idx; i++) {
+          mystack.push(t.top());
+          t.pop();
+        }
+
+        mystack.push(pick);
+        break;
+      }
+
+        // Duplicates the second entry to the top of the stack.
+      case DW_OP_over: {
+        if (mystack.size() < 2) {
+          return LocValue();
+        }
+
+        Dwarf_Signed t = mystack.top();
+        mystack.pop();
+        Dwarf_Signed d = mystack.top();
+
+        mystack.push(t);
+        mystack.push(d);
+        break;
+      }
+
+        // Swaps the top two stack entries.
+      case DW_OP_swap: {
+        if (mystack.size() < 2) {
+          return LocValue();
+        }
+
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e1);
+        mystack.push(e2);
+        break;
+      }
+
+        // Rotates the first three stack entries
+      case DW_OP_rot: {
+        if (mystack.size() < 3) {
+          return LocValue();
+        }
+
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e3 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e1);
+        mystack.push(e3);
+        mystack.push(e2);
+        break;
+      }
+
+        // Pops the top stack entry and treats it as an address.
+        // The value retrieved from that address is pushed.
+      case DW_OP_deref: {
+        if (mystack.empty()) {
+          return LocValue();
+        }
+
+        Dwarf_Addr adr = mystack.top();
+        mystack.pop();
+
+        char* buf = nullptr;
+        size_t out_size = 0;
+        if (!memory(adr, sizeof(Dwarf_Signed), &buf, &out_size)) {
+          printf("Error: can not read memory at: 0x%llx\n", adr);
+          return LocValue();
+        }
+
+        Dwarf_Signed deref_val = *(reinterpret_cast<Dwarf_Signed*>(buf));
+        mystack.push(deref_val);
+        break;
+      }
+
+        // The DW_OP_deref_size operation behaves like the DW_OP_deref
+        // operation: it pops the top stack entry and treats it as an address.
+        // The value retrieved from that address is pushed. In the
+        // DW_OP_deref_size operation, however, the size in bytes of the data
+        // retrieved from the dereferenced address is specified by the single
+        // operand. This operand is a 1-byte unsigned integral constant whose
+        // value may not be larger than the size of an address on the target
+        // machine. The data retrieved is zero extended to the size of an
+        // address on the target machine before being pushed on the expression
+        // stack.
+      case DW_OP_deref_size: {
+        if (mystack.empty()) {
+          return LocValue();
+        }
+
+        Dwarf_Unsigned size = a.op1;
+        if (size > sizeof(Dwarf_Signed)) {
+          return LocValue();
+        }
+
+        Dwarf_Addr adr = mystack.top();
+        mystack.pop();
+
+        char* buf = nullptr;
+        size_t buf_size = 0;
+        if (!memory(adr, size, &buf, &buf_size)) {
+          printf("Error: can not read memory at: 0x%llx\n", adr);
+          return LocValue();
+        }
+
+        Dwarf_Signed deref_val = 0;
+        char* defref_val_ptr = reinterpret_cast<char*>(&deref_val);
+        for (size_t i = 0; i < sizeof(Dwarf_Signed); i++) {
+          *(defref_val_ptr + i) = i < buf_size ? buf[i] : 0;
+        }
+        mystack.push(deref_val);
+        break;
+      }
+
+        // TODO: case DW_OP_xderef:
+        // TODO: case DW_OP_xderef_size:
+        // TODO: case DW_OP_push_object_address:
+        // TODO: case DW_OP_form_tls_address:
+
+        // The DW_OP_call_frame_cfa operation pushes the value of the CFA,
+        // obtained from the Call Frame Information (see Section 6.4).
+      case DW_OP_call_frame_cfa: {
+        // TODO: CFA
+        break;
+      }
+
+        //
+        // Arithmetic and Logical Operations.
+        // The arithmetic operations perform addressing arithmetic, that is,
+        // unsigned arithmetic that wraps on an address-sized boundary.
+        //
+
+        // Operates on top entry.
+      case DW_OP_abs:
+      case DW_OP_neg:
+      case DW_OP_not:
+      case DW_OP_plus_uconst: {
+        if (mystack.empty()) {
+          return LocValue();
+        }
+        Dwarf_Signed top = mystack.top();
+        mystack.pop();
+
+        switch (a.opcode) {
+          // Replace top with it's absolute value.
+          case DW_OP_abs:
+            mystack.push(std::abs(top));
+            break;
+
+          // Negate top.
+          case DW_OP_neg:
+            mystack.push(-top);
+            break;
+
+          // Bitwise complement of the top.
+          case DW_OP_not:
+            mystack.push(~top);
+            break;
+
+          // Top value plus unsigned first operand.
+          case DW_OP_plus_uconst:
+            mystack.push(top + a.op1);
+            break;
+
+          // Should not happen.
+          default:
+            return LocValue();
+        }
+
+        break;
+      }
+
+        // Operates on top two entries.
+      case DW_OP_and:
+      case DW_OP_div:
+      case DW_OP_minus:
+      case DW_OP_mod:
+      case DW_OP_mul:
+      case DW_OP_or:
+      case DW_OP_plus:
+      case DW_OP_shl:
+      case DW_OP_shr:
+      case DW_OP_shra:
+      case DW_OP_xor: {
+        if (mystack.size() < 2) {
+          return LocValue();
+        }
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        switch (a.opcode) {
+          // Bitwise and on top 2 values.
+          case DW_OP_and:
+            mystack.push(e1 & e2);
+            break;
+
+          // Second div first from top (signed division).
+          case DW_OP_div:
+            mystack.push(e2 / e1);
+            break;
+
+          // Second minus first from top.
+          case DW_OP_minus:
+            mystack.push(e2 - e1);
+            break;
+
+          // Second modulo first from top.
+          case DW_OP_mod:
+            mystack.push(e2 % e1);
+            break;
+
+          // Second times first from top.
+          case DW_OP_mul:
+            mystack.push(e2 * e1);
+            break;
+
+          // Bitwise or of top 2 entries.
+          case DW_OP_or:
+            mystack.push(e2 | e1);
+            break;
+
+          // Adds together top two entries.
+          case DW_OP_plus:
+            mystack.push(e2 + e1);
+            break;
+
+          // Shift second entry to left by first entry.
+          case DW_OP_shl:
+            mystack.push(e2 << e1);
+            break;
+
+          // Shift second entry to right by first entry.
+          case DW_OP_shr:
+            mystack.push(e2 >> e1);
+            break;
+
+          // Shift second entry arithmetically to right by first entry.
+          case DW_OP_shra:
+            mystack.push(e2 >> e1);
+            break;
+
+          // Bitwise XOR on top two entries.
+          case DW_OP_xor:
+            mystack.push(e2 ^ e1);
+            break;
+
+          // Should not happen.
+          default:
+            return LocValue();
+        }
+
+        break;
+      }
+
+        //
+        // Control Flow Operations.
+        //
+
+        // TODO: case DW_OP_le:
+        // TODO: case DW_OP_ge:
+        // TODO: case DW_OP_eq:
+        // TODO: case DW_OP_lt:
+        // TODO: case DW_OP_gt:
+        // TODO: case DW_OP_ne:
+        // TODO: case DW_OP_skip:
+        // TODO: case DW_OP_bra:
+        // TODO: case DW_OP_call2:
+        // TODO: case DW_OP_call4:
+        // TODO: case DW_OP_call_ref:
+
+        //
+        // Implicit Location Descriptions.
+        //
+
+        // TODO: case DW_OP_implicit_value:
+        // TODO: case DW_OP_piece:
+        // TODO: case DW_OP_bit_piece:
+
+        //
+        // Special Operations.
+        //
+
+      // This has no effect.
+      case DW_OP_nop:
+        break;
 
         //
         // Object does not exist in memory but its value is known and it is at
@@ -400,6 +725,9 @@ DwarfLocation::LocValue DwarfLocation::evaluateExpression(
         return LocValue{LocValue::Type::kValue, {value}};
       }
 
+        //
+        // Invalid or unrecognized operations.
+        //
       default: {
         const char* op_name;
         if (dwarf_get_OP_name(a.opcode, &op_name) == DW_DLV_OK) {
@@ -416,7 +744,7 @@ DwarfLocation::LocValue DwarfLocation::evaluateExpression(
   }
 
   return LocValue();
-}
+}  // namespace dwarfexpr
 
 void DwarfLocation::dump() const {
   for (const Expression& expr : exprs_) {
@@ -432,5 +760,4 @@ void DwarfLocation::dump() const {
     printf("\n");
   }
 }
-
 };  // namespace dwarfexpr
