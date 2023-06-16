@@ -54,7 +54,7 @@ int64_t register_provider(int reg_num) {
 
   if (regs != nullptr && 0 <= reg_num &&
       reg_num < static_cast<int>(regs_size)) {
-    printf("read reg%d => 0x%lx\n", reg_num, regs[reg_num]);
+    printf("read reg%d => 0x%llx\n", reg_num, regs[reg_num]);
     return regs[reg_num];
   }
   return 0;
@@ -87,6 +87,18 @@ bool memory_provider(uint64_t addr, size_t size, char** out_buf,
   }
 
   return false;
+}
+
+void print_var(const DwarfExpression::Context& expr_ctx, const DwarfVar* var,
+               Dwarf_Addr pc, bool debug) {
+  if (debug) {
+    var->dump();
+  }
+  DwarfType* type = var->type();
+  DwarfVar::DwarfValue value =
+      gDwarfContext != nullptr ? var->evalValue(expr_ctx, pc) : "..";
+  printf("  %s %s (%zu bytes) = %s\n", type->name().c_str(),
+         var->name().c_str(), type->size(), value.c_str());
 }
 
 int main(int argc, char** argv) {
@@ -247,44 +259,24 @@ int main(int argc, char** argv) {
                   }
                 });  // end walkDIE
 
-        Dwarf_Addr cu_low_addr = getAttrValueAddr(dbg, cu_die, DW_AT_low_pc, 0);
-        Dwarf_Addr cu_high_addr =
-            getAttrValueAddr(dbg, cu_die, DW_AT_high_pc, 0);
-        DwarfLocation* func_frame_base =
-            DwarfLocation::loadFromDieAttr(dbg, func_die, DW_AT_frame_base);
+        DwarfExpression::Context expr_ctx = {
+            .cuLowAddr = getAttrValueAddr(dbg, cu_die, DW_AT_low_pc, 0),
+            .cuHighAddr = getAttrValueAddr(dbg, cu_die, DW_AT_high_pc, 0),
+            .frameBaseLoc =
+                DwarfLocation::loadFromDieAttr(dbg, func_die, DW_AT_frame_base),
+            .registers = register_provider,
+            .memory = memory_provider};
 
         printf("params:\n");
         for (const DwarfVar* var : params) {
-          if (debug) {
-            var->dump();
-          }
-          DwarfType* type = var->type();
-          DwarfVar::DwarfValue value =
-              gDwarfContext != nullptr
-                  ? var->evalValue(address, cu_low_addr, cu_high_addr,
-                                   func_frame_base, register_provider,
-                                   memory_provider)
-                  : "..";
-          printf("  %s %s (%zu bytes) = %s\n", type->name().c_str(),
-                 var->name().c_str(), type->size(), value.c_str());
+          print_var(expr_ctx, var, address, debug);
           delete var;
           printf("\n");
         }
 
         printf("locals:\n");
         for (const DwarfVar* var : locals) {
-          if (debug) {
-            var->dump();
-          }
-          DwarfType* type = var->type();
-          DwarfVar::DwarfValue value =
-              gDwarfContext != nullptr
-                  ? var->evalValue(address, cu_low_addr, cu_high_addr,
-                                   func_frame_base, register_provider,
-                                   memory_provider)
-                  : "..";
-          printf("  %s %s (%zu bytes) = %s\n", type->name().c_str(),
-                 var->name().c_str(), type->size(), value.c_str());
+          print_var(expr_ctx, var, address, debug);
           delete var;
           printf("\n");
         }

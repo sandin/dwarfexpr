@@ -1,15 +1,15 @@
 #ifndef DWARFEXPR_DWARF_VARS_H
 #define DWARFEXPR_DWARF_VARS_H
 
-#include <string>
-
 #include <libdwarf/dwarf.h>
 #include <libdwarf/libdwarf.h>
 
+#include <string>
+
+#include "dwarfexpr/context.h"
 #include "dwarfexpr/dwarf_location.h"
 #include "dwarfexpr/dwarf_tag.h"
 #include "dwarfexpr/dwarf_types.h"
-#include "dwarfexpr/context.h"
 
 namespace dwarfexpr {
 
@@ -39,13 +39,12 @@ class DwarfVar : public DwarfTag {
   virtual std::string name() const { return name_; }
   virtual DwarfType* type() const { return type_; }
 
-  DwarfValue evalValue(
-      Dwarf_Addr pc, Dwarf_Addr cuLowAddr, Dwarf_Addr cuHighAddr,
-      DwarfLocation* frameBaseLoc, RegisterProvider registers,
-      MemoryProvider memory) const;
+  DwarfValue evalValue(const DwarfExpression::Context& context,
+                       Dwarf_Addr pc) const;
 
  private:
-  DwarfValue evalValueAtLoc(DwarfType* type, Dwarf_Addr addr, MemoryProvider memory) const;
+  DwarfValue evalValueAtLoc(DwarfType* type, Dwarf_Addr addr,
+                            MemoryProvider memory) const;
   DwarfValue formatValue(DwarfType* type, char* buf, size_t buf_size) const;
 
   DwarfType* loadType();

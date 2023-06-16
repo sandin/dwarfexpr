@@ -1,7 +1,7 @@
 #include "dwarfexpr/dwarf_vars.h"
 
+#include <algorithm>  // std::min
 #include <sstream>
-#include <algorithm> // std::min
 
 #include "dwarfexpr/dwarf_utils.h"
 
@@ -59,19 +59,16 @@ DwarfLocation* DwarfVar::loadLocation() {
   return DwarfLocation::loadFromDieAttr(dbg_, die_, DW_AT_location);
 }
 
-DwarfVar::DwarfValue DwarfVar::evalValue(Dwarf_Addr pc, Dwarf_Addr cuLowAddr,
-                                         Dwarf_Addr cuHighAddr,
-                                         DwarfLocation* frameBaseLoc,
-                                         RegisterProvider registers,
-                                         MemoryProvider memory) const {
+DwarfVar::DwarfValue DwarfVar::evalValue(
+    const DwarfExpression::Context& context, Dwarf_Addr pc) const {
   if (location_) {
-    DwarfLocation::LocValue loc = location_->evalValue(
-        pc, cuLowAddr, cuHighAddr, frameBaseLoc, registers, memory);
-    if (loc.type == DwarfLocation::LocValue::Type::kValue) {
-      return formatValue(type_, reinterpret_cast<char*>(&loc.value.value), sizeof(Dwarf_Signed));
-    } else if (loc.type == DwarfLocation::LocValue::Type::kAddress) {
-      return evalValueAtLoc(type_, loc.value.addr, memory);
-    }  // else loc.type == DwarfLocation::LocValue::Type::kInvalid
+    DwarfExpression::Result loc = location_->evalValue(context, pc);
+    if (loc.type == DwarfExpression::Result::Type::kValue) {
+      return formatValue(type_, reinterpret_cast<char*>(&loc.value),
+                         sizeof(Dwarf_Signed));
+    } else if (loc.type == DwarfExpression::Result::Type::kAddress) {
+      return evalValueAtLoc(type_, loc.value, context.memory);
+    }  // else loc.type == DwarfExpression::Result::Type::kInvalid
   }
   return "unknown";
 }
@@ -85,7 +82,7 @@ DwarfVar::DwarfValue DwarfVar::evalValueAtLoc(DwarfType* type, Dwarf_Addr addr,
     bool found = memory(addr, size, &buf, &buf_size);
     if (!found) {
       printf("Error: can not read memory at addr: 0x%llx, size=0x%zx\n", addr,
-            size);
+             size);
       std::stringstream ss;
       ss << "unknown(addr=" << std::hex << addr << ")";
       return ss.str();
