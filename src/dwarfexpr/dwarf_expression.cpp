@@ -502,12 +502,66 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // Control Flow Operations.
         //
 
-        // TODO: case DW_OP_le:
-        // TODO: case DW_OP_ge:
-        // TODO: case DW_OP_eq:
-        // TODO: case DW_OP_lt:
-        // TODO: case DW_OP_gt:
-        // TODO: case DW_OP_ne:
+      case DW_OP_le: {
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e2 <= e1);
+        break;
+      }
+
+      case DW_OP_ge: {
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e2 >= e1);
+        break;
+      }
+
+      case DW_OP_eq: {
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e2 == e1);
+        break;
+      }
+
+      case DW_OP_lt: {
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e2 < e1);
+        break;
+      }
+
+      case DW_OP_gt: {
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e2 > e1);
+        break;
+      }
+
+      case DW_OP_ne: {
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+        Dwarf_Signed e2 = mystack.top();
+        mystack.pop();
+
+        mystack.push(e2 != e1);
+        break;
+      }
+
         // TODO: case DW_OP_skip:
         // TODO: case DW_OP_bra:
         // TODO: case DW_OP_call2:
