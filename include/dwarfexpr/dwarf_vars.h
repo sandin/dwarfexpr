@@ -6,10 +6,10 @@
 
 #include <string>
 
-#include "dwarfexpr/context.h"
 #include "dwarfexpr/dwarf_location.h"
 #include "dwarfexpr/dwarf_tag.h"
 #include "dwarfexpr/dwarf_types.h"
+#include "dwarfexpr/dwarf_expression.h"
 
 namespace dwarfexpr {
 
@@ -44,7 +44,7 @@ class DwarfVar : public DwarfTag {
 
  private:
   DwarfValue evalValueAtLoc(DwarfType* type, Dwarf_Addr addr,
-                            MemoryProvider memory) const;
+                            DwarfExpression::MemoryProvider memory) const;
   DwarfValue formatValue(DwarfType* type, char* buf, size_t buf_size) const;
 
   DwarfType* loadType();

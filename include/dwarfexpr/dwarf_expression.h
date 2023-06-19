@@ -6,6 +6,7 @@
 
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace dwarfexpr {
 
@@ -27,6 +28,7 @@ class DwarfExpression {
  public:
   using RegisterProvider = std::function<uint64_t(int)>;
   using MemoryProvider = std::function<bool(uint64_t, size_t, char**, size_t*)>;
+  using CfaProvider = std::function<Dwarf_Addr(Dwarf_Addr)>;
 
   struct Result {
     enum class Type { kInvalid = 0, kAddress, kValue };
@@ -56,6 +58,7 @@ class DwarfExpression {
     DwarfLocation* frameBaseLoc;
     RegisterProvider registers;
     MemoryProvider memory;
+    CfaProvider cfa;
   };
 
   DwarfExpression() {}

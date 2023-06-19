@@ -1,15 +1,17 @@
 #include <string.h>
 
+#include <cinttypes>
 #include <cstdint>
+#include <functional>  // std::bind
 #include <iostream>
 #include <limits>  // numeric_limits
 #include <sstream>
 #include <string>
 #include <utility>  // std::make_pair
-#include <vector>
 
 #include "dwarf_context.h"
 #include "dwarfexpr/dwarf_attrs.h"
+#include "dwarfexpr/dwarf_frames.h"
 #include "dwarfexpr/dwarf_searcher.h"
 #include "dwarfexpr/dwarf_types.h"
 #include "dwarfexpr/dwarf_utils.h"
@@ -25,6 +27,7 @@ const char USAGE[] =
     "  -f --functions          Show function names\n"
     "  -C --demangle           Demangle function names\n"
     "\n"
+    "  -F --frames             Show Call Frame Infomation\n"
     "  -l --locals             Show local variables\n"
     "  -p --params             Show function params\n"
     "  -c --context            Set the dwarf context file\n"
@@ -54,7 +57,7 @@ int64_t register_provider(int reg_num) {
 
   if (regs != nullptr && 0 <= reg_num &&
       reg_num < static_cast<int>(regs_size)) {
-    printf("read reg%d => 0x%llx\n", reg_num, regs[reg_num]);
+    printf("read reg%d => 0x%" PRIx64 "\n", reg_num, regs[reg_num]);
     return regs[reg_num];
   }
   return 0;
@@ -110,6 +113,7 @@ int main(int argc, char** argv) {
   bool demangle = false;
   bool show_locals = false;
   bool show_params = false;
+  bool print_cfi = false;  
   bool debug = false;
   std::vector<uint64_t> addresses;
   for (int i = 1; i < argc; ++i) {
@@ -128,6 +132,8 @@ int main(int argc, char** argv) {
       eval_value = true;
       show_locals = true;
       show_params = true;
+    } else if (!strcmp(argv[i], "-F") || !strcmp(argv[i], "--frames")) {
+      print_cfi = true;
     } else if (!strcmp(argv[i], "-l") || !strcmp(argv[i], "--locals")) {
       show_locals = true;
     } else if (!strcmp(argv[i], "-p") || !strcmp(argv[i], "--params")) {
@@ -191,8 +197,12 @@ int main(int argc, char** argv) {
       gDwarfContext = nullptr;
       // DO NOT return, keep going
     }
-    dump_dwarf_context(gDwarfContext);
+    if (gDwarfContext) {
+      dump_dwarf_context(gDwarfContext);
+    }
   }
+
+  DwarfFrames debug_frame(dbg);
 
   DwarfSearcher searcher(dbg);
   for (uint64_t address : addresses) {
@@ -222,6 +232,17 @@ int main(int argc, char** argv) {
       } else {
         printf("%s:?\n", file_name.c_str());
       }
+
+      DwarfExpression::Context expr_ctx = {
+          .cuLowAddr = getAttrValueAddr(dbg, cu_die, DW_AT_low_pc, 0),
+          .cuHighAddr = getAttrValueAddr(dbg, cu_die, DW_AT_high_pc, 0),
+          .frameBaseLoc =
+              DwarfLocation::loadFromDieAttr(dbg, func_die, DW_AT_frame_base),
+          .registers = register_provider,
+          .memory = memory_provider,
+          .cfa = std::bind(&DwarfFrames::GetCfa, &debug_frame,
+                           std::placeholders::_1, register_provider,
+                           memory_provider)};
 
       if (show_locals || show_params) {
         void* ctx = nullptr;
@@ -259,14 +280,6 @@ int main(int argc, char** argv) {
                   }
                 });  // end walkDIE
 
-        DwarfExpression::Context expr_ctx = {
-            .cuLowAddr = getAttrValueAddr(dbg, cu_die, DW_AT_low_pc, 0),
-            .cuHighAddr = getAttrValueAddr(dbg, cu_die, DW_AT_high_pc, 0),
-            .frameBaseLoc =
-                DwarfLocation::loadFromDieAttr(dbg, func_die, DW_AT_frame_base),
-            .registers = register_provider,
-            .memory = memory_provider};
-
         printf("params:\n");
         for (const DwarfVar* var : params) {
           print_var(expr_ctx, var, address, debug);
@@ -280,6 +293,12 @@ int main(int argc, char** argv) {
           delete var;
           printf("\n");
         }
+      }
+
+      if (print_cfi) {
+        Dwarf_Addr cfa =
+            debug_frame.GetCfa(address, expr_ctx.registers, expr_ctx.memory);
+        printf("cfa: 0x%llx\n", cfa);
       }
 
       dwarf_dealloc(dbg, cu_die, DW_DLA_DIE);

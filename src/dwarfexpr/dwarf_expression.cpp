@@ -1,5 +1,6 @@
 #include "dwarfexpr/dwarf_expression.h"
 
+#include <cinttypes>
 #include <cstdlib>  // abs
 #include <stack>
 
@@ -35,7 +36,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
 
     Dwarf_Half reg_num = opcode - DW_OP_reg0;
     uint64_t reg_val = context.registers(reg_num);
-    printf("op=%s reg%d = 0x%llx\n", opcode_name, reg_num, reg_val);
+    printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
     return Result::Value(reg_val);
   } else if (opcode == DW_OP_regx) {
     if (context.registers == nullptr) {
@@ -44,7 +45,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
 
     Dwarf_Half reg_num = ops_[0].op1;
     uint64_t reg_val = context.registers(reg_num);
-    printf("op=%s reg%d = 0x%llx\n", opcode_name, reg_num, reg_val);
+    printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
     return Result::Value(reg_val);
   }
 
@@ -172,8 +173,8 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         }
         Dwarf_Half reg_num = opcode - DW_OP_breg0;
         uint64_t reg_val = context.registers(reg_num);
-        printf("reg%d(0x%llx) + 0x%llx = 0x%llx\n", reg_num, reg_val, a.op1,
-               reg_val + a.op1);
+        printf("reg%d(0x%" PRIx64 ") + 0x%llx = 0x%llx\n", reg_num, reg_val,
+               a.op1, reg_val + a.op1);
         mystack.push(reg_val + a.op1);
         break;
       }
@@ -183,8 +184,8 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         }
         Dwarf_Half reg_num = a.op1;
         uint64_t reg_val = context.registers(reg_num);
-        printf("reg%d(0x%llx) + 0x%llx = 0x%llx\n", reg_num, reg_val, a.op1,
-               reg_val + a.op1);
+        printf("reg%d(0x%" PRIx64 ") + 0x%llx = 0x%llx\n", reg_num, reg_val,
+               a.op1, reg_val + a.op1);
         mystack.push(reg_val + a.op1);
         break;
       }
@@ -359,7 +360,11 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // The DW_OP_call_frame_cfa operation pushes the value of the CFA,
         // obtained from the Call Frame Information (see Section 6.4).
       case DW_OP_call_frame_cfa: {
-        // TODO: CFA
+        if (context.cfa == nullptr) {
+          return Result::Error("can not access cfa in context");
+        }
+        Dwarf_Addr addr = context.cfa(pc);
+        mystack.push(addr);
         break;
       }
 

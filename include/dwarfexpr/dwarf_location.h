@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "dwarfexpr/context.h"
 #include "dwarfexpr/dwarf_expression.h"
 
 namespace dwarfexpr {

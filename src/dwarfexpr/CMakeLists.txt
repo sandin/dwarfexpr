@@ -7,6 +7,7 @@ set(DWARFEXPR_SOURCES
 	dwarf_vars.cpp
 	dwarf_location.cpp
 	dwarf_expression.cpp
+	dwarf_frames.cpp
 )
 
 add_library(dwarfexpr STATIC ${DWARFEXPR_SOURCES})
