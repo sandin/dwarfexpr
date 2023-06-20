@@ -18,7 +18,6 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
   for (const DwarfOp& a : ops_) {
     if (a.opcode == DW_OP_piece) {
       return Result::Error("not impl DW_OP_piece");
-      ;
     }
   }
 
@@ -50,7 +49,8 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
   }
 
   std::stack<Dwarf_Signed> mystack;
-  for (const DwarfOp& a : ops_) {
+  for (size_t i = 0; i < ops_.size(); ++i) {
+    const DwarfOp& a = ops_[i];
     if (dwarf_get_OP_name(opcode, &opcode_name) != DW_DLV_OK) {
       return Result::Error("can not get opcode name");
     }
@@ -352,10 +352,10 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         break;
       }
 
-        // TODO: case DW_OP_xderef:
-        // TODO: case DW_OP_xderef_size:
-        // TODO: case DW_OP_push_object_address:
-        // TODO: case DW_OP_form_tls_address:
+        // TODO: case DW_OP_xderef: NOT_IMPLEMENTED
+        // TODO: case DW_OP_xderef_size: NOT_IMPLEMENTED
+        // TODO: case DW_OP_push_object_address: NOT_IMPLEMENTED
+        // TODO: case DW_OP_form_tls_address: NOT_IMPLEMENTED
 
         // The DW_OP_call_frame_cfa operation pushes the value of the CFA,
         // obtained from the Call Frame Information (see Section 6.4).
@@ -562,19 +562,42 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         break;
       }
 
-        // TODO: case DW_OP_skip:
-        // TODO: case DW_OP_bra:
-        // TODO: case DW_OP_call2:
-        // TODO: case DW_OP_call4:
-        // TODO: case DW_OP_call_ref:
+      case DW_OP_skip: {
+        Dwarf_Unsigned offset = a.off + static_cast<int16_t>(a.op1);
+        int64_t idx = findOpIndexByOffset(offset);
+        if (idx != -1) {
+          i = static_cast<size_t>(idx);  // skip to: current offset + offset
+        }
+        break;
+      }
+
+      case DW_OP_bra: {
+        // Requires one stack element.
+        if (mystack.empty()) {
+          return Result::Error("stack is empty");
+        }
+        Dwarf_Signed e1 = mystack.top();
+        mystack.pop();
+
+        Dwarf_Unsigned offset = a.off + static_cast<int16_t>(a.op1);
+        int64_t idx = findOpIndexByOffset(offset);
+        if (idx != -1) {
+          i = static_cast<size_t>(idx);  // skip to: current offset + offset
+        }
+        break;
+      }
+
+        // TODO: case DW_OP_call2: NOT_IMPLEMENTED
+        // TODO: case DW_OP_call4: NOT_IMPLEMENTED
+        // TODO: case DW_OP_call_ref: NOT_IMPLEMENTED
 
         //
         // Implicit Location Descriptions.
         //
 
-        // TODO: case DW_OP_implicit_value:
-        // TODO: case DW_OP_piece:
-        // TODO: case DW_OP_bit_piece:
+        // TODO: case DW_OP_implicit_value: NOT_IMPLEMENTED
+        // TODO: case DW_OP_piece: NOT_IMPLEMENTED
+        // TODO: case DW_OP_bit_piece: NOT_IMPLEMENTED
 
         //
         // Special Operations.
@@ -619,6 +642,15 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
 
   return Result::Error("stack is empty");
 }  // end of DwarfExpression::evaluate
+
+int64_t DwarfExpression::findOpIndexByOffset(Dwarf_Unsigned off) const {
+  for (size_t i = 0; i < ops_.size(); ++i) {
+    if (ops_[i].off == off) {
+      return i;
+    }
+  }
+  return -1;
+}
 
 void DwarfExpression::dump() const {
   for (const DwarfOp& a : ops_) {

@@ -71,6 +71,8 @@ class DwarfExpression {
   std::size_t count() const { return ops_.size(); }
 
  private:
+  int64_t findOpIndexByOffset(Dwarf_Unsigned off) const;
+
   std::vector<DwarfOp> ops_;
 };
 
