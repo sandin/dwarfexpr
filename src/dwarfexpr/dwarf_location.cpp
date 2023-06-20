@@ -95,7 +95,12 @@ bool DwarfLocation::load() {
         make_scope_exit([&]() { dwarf_dealloc_loc_head_c(loclist_head); });
 
     if (cnt > 0) {
-      loadLocDescEntry(loclist_head, 0);
+      LocationExpression loc_expr = {};
+      if (DwarfExpression::loadExprFromLoclist(loclist_head, 0, &loc_expr.expr,
+                                               &loc_expr.lowAddr,
+                                               &loc_expr.highAddr)) {
+        exprs_.emplace_back(loc_expr);
+      }
     }
     return true;
 
@@ -110,64 +115,18 @@ bool DwarfLocation::load() {
         make_scope_exit([&]() { dwarf_dealloc_loc_head_c(loclist_head); });
 
     for (Dwarf_Unsigned i = 0; i < cnt; ++i) {
-      loadLocDescEntry(loclist_head, i);
+      LocationExpression loc_expr = {};
+      if (DwarfExpression::loadExprFromLoclist(loclist_head, i, &loc_expr.expr,
+                                               &loc_expr.lowAddr,
+                                               &loc_expr.highAddr)) {
+        exprs_.emplace_back(loc_expr);
+      }
     }
     return true;
   } else {
     return false;  // unsupport form
   }
 
-  return true;
-}
-
-bool DwarfLocation::loadLocDescEntry(Dwarf_Loc_Head_c loclist_head,
-                                     Dwarf_Unsigned idx) {
-  Dwarf_Error error = nullptr;
-  Dwarf_Small loclist_lkind = 0;
-  Dwarf_Small lle_value = 0;
-  Dwarf_Unsigned rawval1 = 0;
-  Dwarf_Unsigned rawval2 = 0;
-  Dwarf_Bool debug_addr_unavailable = false;
-  Dwarf_Addr lopc = 0;
-  Dwarf_Addr hipc = 0;
-  Dwarf_Unsigned loclist_expr_op_count = 0;
-  Dwarf_Locdesc_c locdesc_entry = 0;  // list of location descriptions
-  Dwarf_Unsigned expression_offset = 0;
-  Dwarf_Unsigned locdesc_offset = 0;
-
-  if (dwarf_get_locdesc_entry_d(loclist_head, idx, &lle_value, &rawval1,
-                                &rawval2, &debug_addr_unavailable, &lopc, &hipc,
-                                &loclist_expr_op_count, &locdesc_entry,
-                                &loclist_lkind, &expression_offset,
-                                &locdesc_offset, &error) != DW_DLV_OK) {
-    return false;
-  }
-
-  LocationExpression expr;
-  expr.lowAddr = lopc;
-  expr.highAddr = hipc;
-  // List of atoms in one expression.
-  Dwarf_Small op = 0;
-  for (int j = 0; j < static_cast<int>(loclist_expr_op_count); j++) {
-    Dwarf_Unsigned opd1 = 0;
-    Dwarf_Unsigned opd2 = 0;
-    Dwarf_Unsigned opd3 = 0;
-    Dwarf_Unsigned offsetforbranch = 0;
-
-    if (dwarf_get_location_op_value_c(locdesc_entry, j, &op, &opd1, &opd2,
-                                      &opd3, &offsetforbranch,
-                                      &error) == DW_DLV_OK) {
-      DwarfOp a;
-      a.opcode = op;
-      a.op1 = opd1;
-      a.op2 = opd2;
-      a.op3 = opd3;
-      a.off = offsetforbranch;
-      expr.expr.addOp(std::move(a));
-    }
-  }
-
-  exprs_.emplace_back(expr);
   return true;
 }
 
@@ -203,4 +162,5 @@ void DwarfLocation::dump() const {
     printf("\n");
   }
 }
+
 };  // namespace dwarfexpr

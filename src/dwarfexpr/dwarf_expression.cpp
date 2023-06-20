@@ -9,6 +9,59 @@
 
 namespace dwarfexpr {
 
+// static
+bool DwarfExpression::loadExprFromLoclist(Dwarf_Loc_Head_c loclist_head,
+                                          Dwarf_Unsigned idx,
+                                          DwarfExpression* expr,
+                                          Dwarf_Addr* lowAddr,
+                                          Dwarf_Addr* highAddr) {
+  Dwarf_Error error = nullptr;
+  Dwarf_Small loclist_lkind = 0;
+  Dwarf_Small lle_value = 0;
+  Dwarf_Unsigned rawval1 = 0;
+  Dwarf_Unsigned rawval2 = 0;
+  Dwarf_Bool debug_addr_unavailable = false;
+  Dwarf_Addr lopc = 0;
+  Dwarf_Addr hipc = 0;
+  Dwarf_Unsigned loclist_expr_op_count = 0;
+  Dwarf_Locdesc_c locdesc_entry = 0;  // list of location descriptions
+  Dwarf_Unsigned expression_offset = 0;
+  Dwarf_Unsigned locdesc_offset = 0;
+
+  if (dwarf_get_locdesc_entry_d(loclist_head, idx, &lle_value, &rawval1,
+                                &rawval2, &debug_addr_unavailable, &lopc, &hipc,
+                                &loclist_expr_op_count, &locdesc_entry,
+                                &loclist_lkind, &expression_offset,
+                                &locdesc_offset, &error) != DW_DLV_OK) {
+    return false;
+  }
+
+  *lowAddr = lopc;
+  *highAddr = hipc;
+  // List of atoms in one expression.
+  Dwarf_Small op = 0;
+  for (int j = 0; j < static_cast<int>(loclist_expr_op_count); j++) {
+    Dwarf_Unsigned opd1 = 0;
+    Dwarf_Unsigned opd2 = 0;
+    Dwarf_Unsigned opd3 = 0;
+    Dwarf_Unsigned offsetforbranch = 0;
+
+    if (dwarf_get_location_op_value_c(locdesc_entry, j, &op, &opd1, &opd2,
+                                      &opd3, &offsetforbranch,
+                                      &error) == DW_DLV_OK) {
+      DwarfOp a;
+      a.opcode = op;
+      a.op1 = opd1;
+      a.op2 = opd2;
+      a.op3 = opd3;
+      a.off = offsetforbranch;
+      expr->addOp(std::move(a));
+    }
+  }
+
+  return true;
+}
+
 DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
                                                   Dwarf_Addr pc) const {
   if (count() < 1) {
@@ -299,14 +352,13 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         Dwarf_Addr adr = mystack.top();
         mystack.pop();
 
-        char* buf = nullptr;
-        size_t out_size = 0;
-        if (!context.memory(adr, sizeof(Dwarf_Signed), &buf, &out_size)) {
+        Dwarf_Signed defref_val =
+            readMemory<Dwarf_Signed>(context.memory, adr, MAX_DWARF_SIGNED);
+        if (defref_val == MAX_DWARF_SIGNED) {
           return Result::Error("can not read memory at address");
         }
 
-        Dwarf_Signed deref_val = *(reinterpret_cast<Dwarf_Signed*>(buf));
-        mystack.push(deref_val);
+        mystack.push(defref_val);
         break;
       }
 
@@ -576,7 +628,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         if (mystack.empty()) {
           return Result::Error("stack is empty");
         }
-        Dwarf_Signed e1 = mystack.top();
+        // Dwarf_Signed e1 = mystack.top();
         mystack.pop();
 
         Dwarf_Unsigned offset = a.off + static_cast<int16_t>(a.op1);

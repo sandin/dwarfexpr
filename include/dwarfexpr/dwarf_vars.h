@@ -6,10 +6,10 @@
 
 #include <string>
 
+#include "dwarfexpr/dwarf_expression.h"
 #include "dwarfexpr/dwarf_location.h"
 #include "dwarfexpr/dwarf_tag.h"
 #include "dwarfexpr/dwarf_types.h"
-#include "dwarfexpr/dwarf_expression.h"
 
 namespace dwarfexpr {
 

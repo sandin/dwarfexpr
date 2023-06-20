@@ -73,8 +73,9 @@ DwarfVar::DwarfValue DwarfVar::evalValue(
   return "unknown";
 }
 
-DwarfVar::DwarfValue DwarfVar::evalValueAtLoc(DwarfType* type, Dwarf_Addr addr,
-                                              DwarfExpression::MemoryProvider memory) const {
+DwarfVar::DwarfValue DwarfVar::evalValueAtLoc(
+    DwarfType* type, Dwarf_Addr addr,
+    DwarfExpression::MemoryProvider memory) const {
   char* buf = nullptr;
   size_t buf_size = 0;
   if (addr != 0) {

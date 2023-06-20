@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <string.h>
 
 #include <cinttypes>
@@ -57,7 +58,7 @@ int64_t register_provider(int reg_num) {
 
   if (regs != nullptr && 0 <= reg_num &&
       reg_num < static_cast<int>(regs_size)) {
-    printf("read reg%d => 0x%" PRIx64 "\n", reg_num, regs[reg_num]);
+    // printf("read reg%d => 0x%" PRIx64 "\n", reg_num, regs[reg_num]);
     return regs[reg_num];
   }
   return 0;
@@ -80,7 +81,7 @@ bool memory_provider(uint64_t addr, size_t size, char** out_buf,
   char* ptr = reinterpret_cast<char*>(&stack_memory[0]);
   uint64_t start_addr = stack_memory_base_addr;
   uint64_t end_addr = stack_memory_base_addr + stack_memory_size;
-  if (start_addr <= addr && addr < end_addr && addr + size < end_addr) {
+  if (start_addr <= addr && addr < end_addr && addr + size <= end_addr) {
     uint64_t offset = addr - start_addr;
     *out_buf_size = size;
     *out_buf = ptr + offset;
@@ -89,6 +90,9 @@ bool memory_provider(uint64_t addr, size_t size, char** out_buf,
     return true;
   }
 
+  printf("Error: Memory address of range: [0x%" PRIx64 " - 0x%" PRIx64
+         "] addr=0x%" PRIx64 ", size=%zu\n",
+         start_addr, end_addr, addr, size);
   return false;
 }
 
@@ -113,7 +117,7 @@ int main(int argc, char** argv) {
   bool demangle = false;
   bool show_locals = false;
   bool show_params = false;
-  bool print_cfi = false;  
+  bool print_cfi = false;
   bool debug = false;
   std::vector<uint64_t> addresses;
   for (int i = 1; i < argc; ++i) {
@@ -202,8 +206,6 @@ int main(int argc, char** argv) {
     }
   }
 
-  DwarfFrames debug_frame(dbg);
-
   DwarfSearcher searcher(dbg);
   for (uint64_t address : addresses) {
     Dwarf_Die cu_die;
@@ -233,6 +235,23 @@ int main(int argc, char** argv) {
         printf("%s:?\n", file_name.c_str());
       }
 
+      // Get address size
+      Dwarf_Half addr_size = 0;
+      if (dwarf_get_die_address_size(func_die, &addr_size, errp) != DW_DLV_OK) {
+        printf("Error: can not get address_size.\n");
+        continue;
+      }
+
+      // Get offset size and version
+      Dwarf_Half offset_size = 0;
+      Dwarf_Half version = 2;
+      if (dwarf_get_version_of_die(func_die, &version, &offset_size) !=
+          DW_DLV_OK) {
+        printf("Error: can not get version and offset_size.\n");
+        continue;
+      }
+
+      DwarfFrames debug_frame(dbg, addr_size, offset_size, version);
       DwarfExpression::Context expr_ctx = {
           .cuLowAddr = getAttrValueAddr(dbg, cu_die, DW_AT_low_pc, 0),
           .cuHighAddr = getAttrValueAddr(dbg, cu_die, DW_AT_high_pc, 0),
@@ -240,9 +259,10 @@ int main(int argc, char** argv) {
               DwarfLocation::loadFromDieAttr(dbg, func_die, DW_AT_frame_base),
           .registers = register_provider,
           .memory = memory_provider,
-          .cfa = std::bind(&DwarfFrames::GetCfa, &debug_frame,
-                           std::placeholders::_1, register_provider,
-                           memory_provider)};
+          .cfa = nullptr};
+      DwarfExpression::CfaProvider cfa_provider = std::bind(
+          &DwarfFrames::GetCfa, &debug_frame, expr_ctx, std::placeholders::_1);
+      expr_ctx.cfa = cfa_provider;
 
       if (show_locals || show_params) {
         void* ctx = nullptr;
@@ -296,8 +316,7 @@ int main(int argc, char** argv) {
       }
 
       if (print_cfi) {
-        Dwarf_Addr cfa =
-            debug_frame.GetCfa(address, expr_ctx.registers, expr_ctx.memory);
+        Dwarf_Addr cfa = debug_frame.GetCfa(expr_ctx, address);
         printf("cfa: 0x%llx\n", cfa);
       }
 

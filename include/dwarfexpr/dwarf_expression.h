@@ -1,12 +1,13 @@
 #ifndef DWARFEXPR_DWARF_EXPRESSION_H
 #define DWARFEXPR_DWARF_EXPRESSION_H
 
+#include <inttypes.h>
 #include <libdwarf/dwarf.h>
 #include <libdwarf/libdwarf.h>
 
+#include <functional>
 #include <string>
 #include <vector>
-#include <functional>
 
 namespace dwarfexpr {
 
@@ -55,10 +56,10 @@ class DwarfExpression {
   struct Context {
     Dwarf_Addr cuLowAddr;
     Dwarf_Addr cuHighAddr;
-    DwarfLocation* frameBaseLoc;
+    DwarfLocation* frameBaseLoc;  // for DW_OP_fbreg
     RegisterProvider registers;
     MemoryProvider memory;
-    CfaProvider cfa;
+    CfaProvider cfa;  // for DW_OP_call_frame_cfa
   };
 
   DwarfExpression() {}
@@ -69,6 +70,27 @@ class DwarfExpression {
   Result evaluate(const Context& context, Dwarf_Addr pc) const;
   void dump() const;
   std::size_t count() const { return ops_.size(); }
+
+  static bool loadExprFromLoclist(Dwarf_Loc_Head_c loclist_head,
+                                  Dwarf_Unsigned idx, DwarfExpression* expr,
+                                  Dwarf_Addr* lowAddr, Dwarf_Addr* highAddr);
+
+  template <typename T>
+  static T readMemory(MemoryProvider memory, uint64_t addr, T def_val) {
+    char* buf = nullptr;
+    size_t out_size = 0;
+    if (!memory(addr, sizeof(T), &buf, &out_size)) {
+      printf("Error: can not read memory at addr 0x%" PRIx64 "\n", addr);
+      return def_val;
+    }
+    if (sizeof(T) != out_size) {
+      printf("Error: expect size: %zu, actual size: %zu\n", sizeof(T),
+             out_size);
+      return def_val;
+    }
+
+    return *(reinterpret_cast<T*>(buf));
+  }
 
  private:
   int64_t findOpIndexByOffset(Dwarf_Unsigned off) const;

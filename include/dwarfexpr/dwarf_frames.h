@@ -27,22 +27,33 @@ class DwarfFrames {
     Dwarf_Addr row_pc;
     Dwarf_Bool has_more_rows;
     Dwarf_Addr subsequent_pc;
+
+    Dwarf_Addr cfa;
   };
 
-  DwarfFrames(Dwarf_Debug dbg) : dbg_(dbg) {}
+  DwarfFrames(Dwarf_Debug dbg, Dwarf_Half addr_size, Dwarf_Half offset_size,
+              Dwarf_Half version)
+      : dbg_(dbg),
+        addr_size_(addr_size),
+        offset_size_(offset_size),
+        version_(version) {}
   ~DwarfFrames() {}
 
-  Dwarf_Addr GetCfa(Dwarf_Addr pc, DwarfExpression::RegisterProvider registers,
-                    DwarfExpression::MemoryProvider memory) const;
+  Dwarf_Addr GetCfa(const DwarfExpression::Context& context,
+                    Dwarf_Addr pc) const;
 
  private:
-  Dwarf_Addr GetReg(Dwarf_Half i, Dwarf_Addr pc, const FdeInfo& info,
-                    DwarfExpression::RegisterProvider registers,
-                    DwarfExpression::MemoryProvider memory) const;
+  Dwarf_Addr GetReg(const DwarfExpression::Context& context, Dwarf_Half i,
+                    Dwarf_Addr pc, const FdeInfo& info) const;
+  Dwarf_Addr EvalExpr(const DwarfExpression::Context& context, Dwarf_Half i,
+                      Dwarf_Addr pc, const FdeInfo& info) const;
 
   bool GetAllFde(FdeList* fde_list) const;
 
   Dwarf_Debug dbg_;
+  Dwarf_Half addr_size_;
+  Dwarf_Half offset_size_;
+  Dwarf_Half version_;
 };  // class DwarfFrames
 
 }  // namespace dwarfexpr

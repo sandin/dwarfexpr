@@ -44,9 +44,6 @@ class DwarfLocation {
   DwarfExpression::Result evalValue(const DwarfExpression::Context& context,
                                     Dwarf_Addr pc) const;
 
- private:
-  bool loadLocDescEntry(Dwarf_Loc_Head_c loclist_head, Dwarf_Unsigned idx);
-
  protected:
   Dwarf_Debug dbg_;
   Dwarf_Attribute attr_;
