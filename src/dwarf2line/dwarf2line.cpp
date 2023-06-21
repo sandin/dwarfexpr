@@ -46,23 +46,23 @@ DwarfContextFrame* getFirstThreadFrame(DwarfContext* context) {
   return nullptr;
 }
 
-int64_t register_provider(int reg_num) {
-  uint32_t regs_size = 0;
-  uint64_t* regs = nullptr;
-
+bool register_provider(int reg_num, uint64_t* reg_val) {
   DwarfContextFrame* frame = getFirstThreadFrame(gDwarfContext);
-  if (frame != nullptr) {
-    regs_size = frame->regs.size();
-    regs = frame->regs.data();
+  if (frame == nullptr) {
+    return false;
   }
 
+  uint32_t regs_size = frame->regs.size();
+  uint64_t* regs = frame->regs.data();
   if (regs != nullptr && 0 <= reg_num &&
       reg_num < static_cast<int>(regs_size)) {
     // printf("read reg%d => 0x%" PRIx64 "\n", reg_num, regs[reg_num]);
-    return regs[reg_num];
+    *reg_val = regs[reg_num];
+    return true;
   }
-  return 0;
+  return false; // FIXME
 }
+
 bool memory_provider(uint64_t addr, size_t size, char** out_buf,
                      size_t* out_buf_size) {
   *out_buf = nullptr;

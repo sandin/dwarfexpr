@@ -152,7 +152,8 @@ DwarfExpression::Result DwarfLocation::evalValue(
   printf(
       "Error: unable to find the target pc in the address range, pc=0x%llx\n",
       pc);
-  return DwarfExpression::Result::Error("invalid location");
+  return DwarfExpression::Result::Error(
+      DwarfExpression::ErrorCode::kAddressInvalid, 0);
 }
 
 void DwarfLocation::dump() const {

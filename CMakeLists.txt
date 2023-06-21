@@ -48,4 +48,4 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
 endif()
 
 add_subdirectory(src)
-#add_subdirectory(tests)
+add_subdirectory(tests)

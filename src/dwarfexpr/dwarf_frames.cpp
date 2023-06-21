@@ -1,6 +1,7 @@
 #include "dwarfexpr/dwarf_frames.h"
 
 #include <cstdlib>  // std::abs
+#include <cinttypes>
 
 #include "dwarfexpr/dwarf_expression.h"
 #include "dwarfexpr/dwarf_utils.h"
@@ -130,9 +131,13 @@ Dwarf_Addr DwarfFrames::GetReg(const DwarfExpression::Context& context,
       } else {
         printf("register(R): %s%s%lld ", regname(info.reg).c_str(),
                offset >= 0 ? "+" : "-", std::abs(offset));
-        uint64_t reg_val = context.registers(info.reg);
+        uint64_t reg_val = 0;
+        if (!context.registers(info.reg, &reg_val)) {
+          printf("Error: can not read register, reg_num: %llu\n", info.reg);
+          break;
+        }
         result = reg_val + offset;
-        printf("register=%d, reg_val=0x%llx, offset=%d, val=0x%llx\n", info.reg,
+        printf("register=%llu, reg_val=0x%" PRIx64 ", offset=%lld, val=0x%llx\n", info.reg,
                reg_val, offset, result);
       }
       break;

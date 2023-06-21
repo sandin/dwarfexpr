@@ -2,12 +2,23 @@
 
 #include <cinttypes>
 #include <cstdlib>  // abs
+#include <limits>
 #include <stack>
 
 #include "dwarfexpr/dwarf_location.h"
 #include "dwarfexpr/dwarf_utils.h"
 
 namespace dwarfexpr {
+
+// static
+uint64_t DwarfExpression::readRegister(RegisterProvider registers, int reg_num,
+                                       uint64_t def_val) {
+  uint64_t val = 0;
+  if (registers(reg_num, &val)) {
+    return val;
+  }
+  return def_val;
+}
 
 // static
 bool DwarfExpression::loadExprFromLoclist(Dwarf_Loc_Head_c loclist_head,
@@ -65,38 +76,45 @@ bool DwarfExpression::loadExprFromLoclist(Dwarf_Loc_Head_c loclist_head,
 DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
                                                   Dwarf_Addr pc) const {
   if (count() < 1) {
-    return Result::Error("no operation in expression");
+    return Result::Error(ErrorCode::kIllegalState, 0);
   }
 
   for (const DwarfOp& a : ops_) {
     if (a.opcode == DW_OP_piece) {
-      return Result::Error("not impl DW_OP_piece");
+      return Result::Error(ErrorCode::kNotImplemented, a.off);
     }
   }
 
+  uint64_t cur_off = ops_[0].off;
   Dwarf_Small opcode = ops_[0].opcode;
   const char* opcode_name;
   if (dwarf_get_OP_name(opcode, &opcode_name) != DW_DLV_OK) {
-    return Result::Error("can not get opcode name");
+    return Result::Error(ErrorCode::kIllegalOp, cur_off);
   }
 
   // 2.6.1.1.2 Register Location Descriptions
   if (DW_OP_reg0 <= opcode && opcode <= DW_OP_reg31) {
     if (context.registers == nullptr) {
-      return Result::Error("can not access registers in context");
+      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
     }
 
     Dwarf_Half reg_num = opcode - DW_OP_reg0;
-    uint64_t reg_val = context.registers(reg_num);
+    uint64_t reg_val = 0;
+    if (!context.registers(reg_num, &reg_val)) {
+      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+    }
     printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
     return Result::Value(reg_val);
   } else if (opcode == DW_OP_regx) {
     if (context.registers == nullptr) {
-      return Result::Error("can not access registers in context");
+      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
     }
 
     Dwarf_Half reg_num = ops_[0].op1;
-    uint64_t reg_val = context.registers(reg_num);
+    uint64_t reg_val = 0;
+    if (!context.registers(reg_num, &reg_val)) {
+      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+    }
     printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
     return Result::Value(reg_val);
   }
@@ -104,11 +122,12 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
   std::stack<Dwarf_Signed> mystack;
   for (size_t i = 0; i < ops_.size(); ++i) {
     const DwarfOp& a = ops_[i];
+    cur_off = a.off;
     if (dwarf_get_OP_name(opcode, &opcode_name) != DW_DLV_OK) {
-      return Result::Error("can not get opcode name");
+      return Result::Error(ErrorCode::kLibdwarfError, cur_off);
     }
-    printf("stack: op=%s, op1=0x%llx, op2=0x%llx, op3=0x%llx, off=0x%llx\n",
-           opcode_name, a.op1, a.op2, a.op3, a.off);
+    // printf("stack: op=%s, op1=0x%llx, op2=0x%llx, op3=0x%llx, off=0x%llx\n",
+    //       opcode_name, a.op1, a.op2, a.op3, a.off);
 
     switch (a.opcode) {
         //
@@ -177,12 +196,12 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // Frame base plus signed first operand.
       case DW_OP_fbreg: {
         if (context.frameBaseLoc == nullptr) {
-          return Result::Error("frameBaseLoc can not be null");
+          return Result::Error(ErrorCode::kFrameBaseInvalid, cur_off);
         }
 
         Result frameBase = context.frameBaseLoc->evalValue(context, pc);
         if (!frameBase.valid()) {
-          return Result::Error(frameBase.error_msg);
+          return Result::Error(ErrorCode::kFrameBaseInvalid, cur_off);
         }
         mystack.push(frameBase.value + a.op1);
         break;
@@ -222,10 +241,13 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_breg30:
       case DW_OP_breg31: {
         if (context.registers == nullptr) {
-          return Result::Error("can not access registers in context");
+          return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
         }
         Dwarf_Half reg_num = opcode - DW_OP_breg0;
-        uint64_t reg_val = context.registers(reg_num);
+        uint64_t reg_val = 0;
+        if (!context.registers(reg_num, &reg_val)) {
+          return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+        }
         printf("reg%d(0x%" PRIx64 ") + 0x%llx = 0x%llx\n", reg_num, reg_val,
                a.op1, reg_val + a.op1);
         mystack.push(reg_val + a.op1);
@@ -233,10 +255,13 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       }
       case DW_OP_bregx: {
         if (context.registers == nullptr) {
-          return Result::Error("can not access registers in context");
+          return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
         }
         Dwarf_Half reg_num = a.op1;
-        uint64_t reg_val = context.registers(reg_num);
+        uint64_t reg_val = 0;
+        if (!context.registers(reg_num, &reg_val)) {
+          return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+        }
         printf("reg%d(0x%" PRIx64 ") + 0x%llx = 0x%llx\n", reg_num, reg_val,
                a.op1, reg_val + a.op1);
         mystack.push(reg_val + a.op1);
@@ -251,7 +276,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // Duplicates the value at the top of the stack.
       case DW_OP_dup:
         if (mystack.empty()) {
-          return Result::Error("stack is empty");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
         mystack.push(mystack.top());
         break;
@@ -259,7 +284,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       // Pops the value at the top of the stack
       case DW_OP_drop:
         if (mystack.empty()) {
-          return Result::Error("stack is empty");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
         mystack.pop();
         break;
@@ -269,7 +294,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         Dwarf_Unsigned idx = a.op1;
         std::stack<Dwarf_Signed> t;
         if (mystack.size() < (idx + 1)) {
-          return Result::Error("out of index");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
         for (unsigned i = 0; i < idx; i++) {
@@ -291,7 +316,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // Duplicates the second entry to the top of the stack.
       case DW_OP_over: {
         if (mystack.size() < 2) {
-          return Result::Error("stack size < 2");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
         Dwarf_Signed t = mystack.top();
@@ -306,7 +331,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // Swaps the top two stack entries.
       case DW_OP_swap: {
         if (mystack.size() < 2) {
-          return Result::Error("stack size < 2");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
         Dwarf_Signed e1 = mystack.top();
@@ -342,11 +367,11 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // The value retrieved from that address is pushed.
       case DW_OP_deref: {
         if (context.memory == nullptr) {
-          return Result::Error("can not access memory in context");
+          return Result::Error(ErrorCode::kMemoryInvalid, cur_off);
         }
 
         if (mystack.empty()) {
-          return Result::Error("stack is empty");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
         Dwarf_Addr adr = mystack.top();
@@ -355,7 +380,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         Dwarf_Signed defref_val =
             readMemory<Dwarf_Signed>(context.memory, adr, MAX_DWARF_SIGNED);
         if (defref_val == MAX_DWARF_SIGNED) {
-          return Result::Error("can not read memory at address");
+          return Result::Error(ErrorCode::kMemoryInvalid, cur_off);
         }
 
         mystack.push(defref_val);
@@ -374,16 +399,16 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // stack.
       case DW_OP_deref_size: {
         if (context.memory == nullptr) {
-          return Result::Error("can not access memory in context");
+          return Result::Error(ErrorCode::kMemoryInvalid, cur_off);
         }
 
         if (mystack.empty()) {
-          return Result::Error("stack is empty");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
         Dwarf_Unsigned size = a.op1;
         if (size > sizeof(Dwarf_Signed)) {
-          return Result::Error("unexpect size of op1");
+          return Result::Error(ErrorCode::kIllegalOp, cur_off);
         }
 
         Dwarf_Addr adr = mystack.top();
@@ -392,7 +417,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         char* buf = nullptr;
         size_t buf_size = 0;
         if (!context.memory(adr, size, &buf, &buf_size)) {
-          return Result::Error("can not read memory at address");
+          return Result::Error(ErrorCode::kMemoryInvalid, cur_off);
         }
 
         Dwarf_Signed deref_val = 0;
@@ -413,7 +438,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // obtained from the Call Frame Information (see Section 6.4).
       case DW_OP_call_frame_cfa: {
         if (context.cfa == nullptr) {
-          return Result::Error("can not access cfa in context");
+          return Result::Error(ErrorCode::kCfaInvalid, cur_off);
         }
         Dwarf_Addr addr = context.cfa(pc);
         mystack.push(addr);
@@ -432,7 +457,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_not:
       case DW_OP_plus_uconst: {
         if (mystack.empty()) {
-          return Result::Error("stack is empty");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
         Dwarf_Signed top = mystack.top();
         mystack.pop();
@@ -479,7 +504,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_shra:
       case DW_OP_xor: {
         if (mystack.size() < 2) {
-          return Result::Error("stack size < 2");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
         Dwarf_Signed e1 = mystack.top();
         mystack.pop();
@@ -626,7 +651,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_bra: {
         // Requires one stack element.
         if (mystack.empty()) {
-          return Result::Error("stack is empty");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
         // Dwarf_Signed e1 = mystack.top();
         mystack.pop();
@@ -667,7 +692,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         //
       case DW_OP_stack_value: {
         if (mystack.empty()) {
-          return Result::Error("stack is empty");
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
         Dwarf_Addr value = mystack.top();
         return Result::Value(value);
@@ -677,22 +702,21 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // Invalid or unrecognized operations.
         //
       default: {
-        std::string err_msg = "not impl opcode: ";
         const char* op_name;
         if (dwarf_get_OP_name(a.opcode, &op_name) == DW_DLV_OK) {
-          err_msg += op_name;
+          printf("Error: not implemented op: %s\n", op_name);
         }
-        return Result::Error(err_msg);
+        return Result::Error(ErrorCode::kNotImplemented, cur_off);
       }
     }  // switch
   }    // for
 
-  if (!mystack.empty()) {
-    Dwarf_Addr value = mystack.top();
-    return Result::Address(value);
+  if (mystack.empty()) {
+    return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
   }
 
-  return Result::Error("stack is empty");
+  Dwarf_Addr value = mystack.top();
+  return Result::Address(value);
 }  // end of DwarfExpression::evaluate
 
 int64_t DwarfExpression::findOpIndexByOffset(Dwarf_Unsigned off) const {

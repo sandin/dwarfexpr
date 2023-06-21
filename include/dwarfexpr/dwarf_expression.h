@@ -27,30 +27,58 @@ struct DwarfOp {
  */
 class DwarfExpression {
  public:
-  using RegisterProvider = std::function<uint64_t(int)>;
+  using RegisterProvider = std::function<bool(int, uint64_t*)>;
   using MemoryProvider = std::function<bool(uint64_t, size_t, char**, size_t*)>;
   using CfaProvider = std::function<Dwarf_Addr(Dwarf_Addr)>;
+
+  enum class ErrorCode {
+    kNone = 0,
+    kLibdwarfError,
+    kMemoryInvalid,
+    kRegisterInvalid,
+    kFrameBaseInvalid,
+    kIllegalState,
+    kIllegalOp,
+    kStackIndexInvalid,
+    kCfaInvalid,
+    kNotImplemented,
+    kAddressInvalid,
+    kUnknown = 255
+  };
 
   struct Result {
     enum class Type { kInvalid = 0, kAddress, kValue };
 
     Type type;
     Dwarf_Addr value;
-    std::string error_msg;
 
-    static Result Error(std::string err) {
-      return Result{.type = Type::kInvalid, .value = 0, .error_msg = err};
+    ErrorCode error_code;
+    uint64_t error_addr;
+
+    static Result Error(ErrorCode err_code, uint64_t err_addr) {
+      return Result{.type = Type::kInvalid,
+                    .value = 0,
+                    .error_code = err_code,
+                    .error_addr = err_addr};
     }
 
     static Result Value(Dwarf_Addr value) {
-      return Result{.type = Type::kValue, .value = value, .error_msg = ""};
+      return Result{.type = Type::kValue,
+                    .value = value,
+                    .error_code = ErrorCode::kNone,
+                    .error_addr = 0};
     }
 
     static Result Address(Dwarf_Addr address) {
-      return Result{.type = Type::kAddress, .value = address, .error_msg = ""};
+      return Result{.type = Type::kAddress,
+                    .value = address,
+                    .error_code = ErrorCode::kNone,
+                    .error_addr = 0};
     }
 
-    bool valid() const { return type != Type::kInvalid; }
+    bool valid() const {
+      return type != Type::kInvalid && error_code == ErrorCode::kNone;
+    }
   };
 
   struct Context {
@@ -66,6 +94,7 @@ class DwarfExpression {
   ~DwarfExpression() {}
 
   void addOp(DwarfOp&& op) { ops_.emplace_back(op); }
+  void clear() { ops_.clear(); }
 
   Result evaluate(const Context& context, Dwarf_Addr pc) const;
   void dump() const;
@@ -91,6 +120,9 @@ class DwarfExpression {
 
     return *(reinterpret_cast<T*>(buf));
   }
+
+  static uint64_t readRegister(RegisterProvider registers, int reg_num,
+                               uint64_t def_val);
 
  private:
   int64_t findOpIndexByOffset(Dwarf_Unsigned off) const;
