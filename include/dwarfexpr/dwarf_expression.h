@@ -1,11 +1,13 @@
 #ifndef DWARFEXPR_DWARF_EXPRESSION_H
 #define DWARFEXPR_DWARF_EXPRESSION_H
 
+#include <assert.h>
 #include <inttypes.h>
 #include <libdwarf/dwarf.h>
 #include <libdwarf/libdwarf.h>
 
 #include <functional>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -33,7 +35,6 @@ class DwarfExpression {
 
   enum class ErrorCode {
     kNone = 0,
-    kLibdwarfError,
     kMemoryInvalid,
     kRegisterInvalid,
     kFrameBaseInvalid,
@@ -94,6 +95,14 @@ class DwarfExpression {
   ~DwarfExpression() {}
 
   void addOp(DwarfOp&& op) { ops_.emplace_back(op); }
+  void setOps(std::initializer_list<DwarfOp> ops) {
+    clear();
+    ops_.insert(ops_.end(), ops.begin(), ops.end());
+  }
+  const DwarfOp& getOp(int64_t index) const {
+    assert(static_cast<size_t>(index) < ops_.size());
+    return ops_.at(index);
+  }
   void clear() { ops_.clear(); }
 
   Result evaluate(const Context& context, Dwarf_Addr pc) const;
@@ -124,9 +133,9 @@ class DwarfExpression {
   static uint64_t readRegister(RegisterProvider registers, int reg_num,
                                uint64_t def_val);
 
- private:
   int64_t findOpIndexByOffset(Dwarf_Unsigned off) const;
 
+ private:
   std::vector<DwarfOp> ops_;
 };
 

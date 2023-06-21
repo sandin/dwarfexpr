@@ -79,52 +79,41 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
     return Result::Error(ErrorCode::kIllegalState, 0);
   }
 
-  for (const DwarfOp& a : ops_) {
-    if (a.opcode == DW_OP_piece) {
-      return Result::Error(ErrorCode::kNotImplemented, a.off);
-    }
-  }
-
-  uint64_t cur_off = ops_[0].off;
-  Dwarf_Small opcode = ops_[0].opcode;
-  const char* opcode_name;
-  if (dwarf_get_OP_name(opcode, &opcode_name) != DW_DLV_OK) {
-    return Result::Error(ErrorCode::kIllegalOp, cur_off);
-  }
-
-  // 2.6.1.1.2 Register Location Descriptions
-  if (DW_OP_reg0 <= opcode && opcode <= DW_OP_reg31) {
-    if (context.registers == nullptr) {
-      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
-    }
-
-    Dwarf_Half reg_num = opcode - DW_OP_reg0;
-    uint64_t reg_val = 0;
-    if (!context.registers(reg_num, &reg_val)) {
-      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
-    }
-    printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
-    return Result::Value(reg_val);
-  } else if (opcode == DW_OP_regx) {
-    if (context.registers == nullptr) {
-      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
-    }
-
-    Dwarf_Half reg_num = ops_[0].op1;
-    uint64_t reg_val = 0;
-    if (!context.registers(reg_num, &reg_val)) {
-      return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
-    }
-    printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
-    return Result::Value(reg_val);
-  }
-
   std::stack<Dwarf_Signed> mystack;
+  Dwarf_Unsigned cur_off;
   for (size_t i = 0; i < ops_.size(); ++i) {
     const DwarfOp& a = ops_[i];
     cur_off = a.off;
-    if (dwarf_get_OP_name(opcode, &opcode_name) != DW_DLV_OK) {
-      return Result::Error(ErrorCode::kLibdwarfError, cur_off);
+
+    const char* opcode_name;
+    if (dwarf_get_OP_name(a.opcode, &opcode_name) != DW_DLV_OK) {
+      return Result::Error(ErrorCode::kIllegalOp, cur_off);
+    }
+
+    if (DW_OP_reg0 <= a.opcode && a.opcode <= DW_OP_reg31) {
+      if (context.registers == nullptr) {
+        return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+      }
+
+      Dwarf_Half reg_num = a.opcode - DW_OP_reg0;
+      uint64_t reg_val = 0;
+      if (!context.registers(reg_num, &reg_val)) {
+        return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+      }
+      printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
+      return Result::Value(reg_val);
+    } else if (a.opcode == DW_OP_regx) {
+      if (context.registers == nullptr) {
+        return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+      }
+
+      Dwarf_Half reg_num = ops_[0].op1;
+      uint64_t reg_val = 0;
+      if (!context.registers(reg_num, &reg_val)) {
+        return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
+      }
+      printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
+      return Result::Value(reg_val);
     }
     // printf("stack: op=%s, op1=0x%llx, op2=0x%llx, op3=0x%llx, off=0x%llx\n",
     //       opcode_name, a.op1, a.op2, a.op3, a.off);
@@ -243,7 +232,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         if (context.registers == nullptr) {
           return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
         }
-        Dwarf_Half reg_num = opcode - DW_OP_breg0;
+        Dwarf_Half reg_num = a.opcode - DW_OP_breg0;
         uint64_t reg_val = 0;
         if (!context.registers(reg_num, &reg_val)) {
           return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
