@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <initializer_list>
+#include <stack>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,7 @@ class DwarfExpression {
     kFrameBaseInvalid,
     kIllegalState,
     kIllegalOp,
+    kIllegalOpd,
     kStackIndexInvalid,
     kCfaInvalid,
     kNotImplemented,
@@ -96,7 +98,7 @@ class DwarfExpression {
 
   void addOp(DwarfOp&& op) { ops_.emplace_back(op); }
   void setOps(std::initializer_list<DwarfOp> ops) {
-    clear();
+    ops_.clear();
     ops_.insert(ops_.end(), ops.begin(), ops.end());
   }
   const DwarfOp& getOp(int64_t index) const {
@@ -105,7 +107,17 @@ class DwarfExpression {
   }
   void clear() { ops_.clear(); }
 
-  Result evaluate(const Context& context, Dwarf_Addr pc) const;
+  /**
+   * @brief evaluate this dwarf expression
+   *
+   * @param context the context of evaluate
+   * @param pc the target pc address
+   * @param mystack the stack for evaluate(only for unit testing)
+   * @return Result the result of evaluate
+   */
+  Result evaluate(const Context& context, Dwarf_Addr pc,
+                  std::stack<Dwarf_Signed>* mystack = nullptr) const;
+
   void dump() const;
   std::size_t count() const { return ops_.size(); }
 

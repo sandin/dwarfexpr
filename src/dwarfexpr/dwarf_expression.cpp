@@ -73,13 +73,18 @@ bool DwarfExpression::loadExprFromLoclist(Dwarf_Loc_Head_c loclist_head,
   return true;
 }
 
-DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
-                                                  Dwarf_Addr pc) const {
+DwarfExpression::Result DwarfExpression::evaluate(
+    const Context& context, Dwarf_Addr pc,
+    std::stack<Dwarf_Signed>* mystack) const {
   if (count() < 1) {
     return Result::Error(ErrorCode::kIllegalState, 0);
   }
 
-  std::stack<Dwarf_Signed> mystack;
+  if (mystack == nullptr) {
+    std::stack<Dwarf_Signed> local_stack;
+    mystack = &local_stack;
+  }
+
   Dwarf_Unsigned cur_off;
   for (size_t i = 0; i < ops_.size(); ++i) {
     const DwarfOp& a = ops_[i];
@@ -101,6 +106,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
       }
       printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
+      mystack->push(reg_val);
       return Result::Value(reg_val);
     } else if (a.opcode == DW_OP_regx) {
       if (context.registers == nullptr) {
@@ -113,6 +119,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         return Result::Error(ErrorCode::kRegisterInvalid, cur_off);
       }
       printf("op=%s reg%d = 0x%" PRIx64 "\n", opcode_name, reg_num, reg_val);
+      mystack->push(reg_val);
       return Result::Value(reg_val);
     }
     // printf("stack: op=%s, op1=0x%llx, op2=0x%llx, op3=0x%llx, off=0x%llx\n",
@@ -157,7 +164,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_lit29:
       case DW_OP_lit30:
       case DW_OP_lit31:
-        mystack.push(a.opcode - DW_OP_lit0);
+        mystack->push(a.opcode - DW_OP_lit0);
         break;
 
         // First operand pushed to stack.
@@ -173,7 +180,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_const8s:
       case DW_OP_constu:
       case DW_OP_consts:
-        mystack.push(a.op1);
+        mystack->push(a.op1);
         break;
 
         //
@@ -192,7 +199,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         if (!frameBase.valid()) {
           return Result::Error(ErrorCode::kFrameBaseInvalid, cur_off);
         }
-        mystack.push(frameBase.value + a.op1);
+        mystack->push(frameBase.value + a.op1);
         break;
       }
 
@@ -239,7 +246,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         }
         printf("reg%d(0x%" PRIx64 ") + 0x%llx = 0x%llx\n", reg_num, reg_val,
                a.op1, reg_val + a.op1);
-        mystack.push(reg_val + a.op1);
+        mystack->push(reg_val + a.op1);
         break;
       }
       case DW_OP_bregx: {
@@ -253,7 +260,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         }
         printf("reg%d(0x%" PRIx64 ") + 0x%llx = 0x%llx\n", reg_num, reg_val,
                a.op1, reg_val + a.op1);
-        mystack.push(reg_val + a.op1);
+        mystack->push(reg_val + a.op1);
         break;
       }
 
@@ -264,91 +271,91 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
 
         // Duplicates the value at the top of the stack.
       case DW_OP_dup:
-        if (mystack.empty()) {
+        if (mystack->empty()) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
-        mystack.push(mystack.top());
+        mystack->push(mystack->top());
         break;
 
       // Pops the value at the top of the stack
       case DW_OP_drop:
-        if (mystack.empty()) {
+        if (mystack->empty()) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
-        mystack.pop();
+        mystack->pop();
         break;
 
         // Entry with specified index is copied at the top.
       case DW_OP_pick: {
         Dwarf_Unsigned idx = a.op1;
         std::stack<Dwarf_Signed> t;
-        if (mystack.size() < (idx + 1)) {
+        if (mystack->size() < (idx + 1)) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
         for (unsigned i = 0; i < idx; i++) {
-          t.push(mystack.top());
-          mystack.pop();
+          t.push(mystack->top());
+          mystack->pop();
         }
 
-        Dwarf_Signed pick = mystack.top();
+        Dwarf_Signed pick = mystack->top();
 
         for (unsigned i = 0; i < idx; i++) {
-          mystack.push(t.top());
+          mystack->push(t.top());
           t.pop();
         }
 
-        mystack.push(pick);
+        mystack->push(pick);
         break;
       }
 
         // Duplicates the second entry to the top of the stack.
       case DW_OP_over: {
-        if (mystack.size() < 2) {
+        if (mystack->size() < 2) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
-        Dwarf_Signed t = mystack.top();
-        mystack.pop();
-        Dwarf_Signed d = mystack.top();
+        Dwarf_Signed t = mystack->top();
+        mystack->pop();
+        Dwarf_Signed d = mystack->top();
 
-        mystack.push(t);
-        mystack.push(d);
+        mystack->push(t);
+        mystack->push(d);
         break;
       }
 
         // Swaps the top two stack entries.
       case DW_OP_swap: {
-        if (mystack.size() < 2) {
+        if (mystack->size() < 2) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e1);
-        mystack.push(e2);
+        mystack->push(e1);
+        mystack->push(e2);
         break;
       }
 
         // Rotates the first three stack entries
       case DW_OP_rot: {
-        if (mystack.size() < 3) {
-          return Result();
+        if (mystack->size() < 3) {
+          return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e3 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e3 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e1);
-        mystack.push(e3);
-        mystack.push(e2);
+        mystack->push(e1);
+        mystack->push(e3);
+        mystack->push(e2);
         break;
       }
 
@@ -359,12 +366,12 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
           return Result::Error(ErrorCode::kMemoryInvalid, cur_off);
         }
 
-        if (mystack.empty()) {
+        if (mystack->empty()) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
-        Dwarf_Addr adr = mystack.top();
-        mystack.pop();
+        Dwarf_Addr adr = mystack->top();
+        mystack->pop();
 
         Dwarf_Signed defref_val =
             readMemory<Dwarf_Signed>(context.memory, adr, MAX_DWARF_SIGNED);
@@ -372,7 +379,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
           return Result::Error(ErrorCode::kMemoryInvalid, cur_off);
         }
 
-        mystack.push(defref_val);
+        mystack->push(defref_val);
         break;
       }
 
@@ -391,17 +398,17 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
           return Result::Error(ErrorCode::kMemoryInvalid, cur_off);
         }
 
-        if (mystack.empty()) {
+        if (mystack->empty()) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
 
         Dwarf_Unsigned size = a.op1;
-        if (size > sizeof(Dwarf_Signed)) {
-          return Result::Error(ErrorCode::kIllegalOp, cur_off);
+        if (size > sizeof(Dwarf_Signed) || size == 0) {
+          return Result::Error(ErrorCode::kIllegalOpd, cur_off);
         }
 
-        Dwarf_Addr adr = mystack.top();
-        mystack.pop();
+        Dwarf_Addr adr = mystack->top();
+        mystack->pop();
 
         char* buf = nullptr;
         size_t buf_size = 0;
@@ -414,7 +421,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         for (size_t i = 0; i < sizeof(Dwarf_Signed); i++) {
           *(defref_val_ptr + i) = i < buf_size ? buf[i] : 0;
         }
-        mystack.push(deref_val);
+        mystack->push(deref_val);
         break;
       }
 
@@ -430,7 +437,7 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
           return Result::Error(ErrorCode::kCfaInvalid, cur_off);
         }
         Dwarf_Addr addr = context.cfa(pc);
-        mystack.push(addr);
+        mystack->push(addr);
         break;
       }
 
@@ -445,31 +452,31 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_neg:
       case DW_OP_not:
       case DW_OP_plus_uconst: {
-        if (mystack.empty()) {
+        if (mystack->empty()) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
-        Dwarf_Signed top = mystack.top();
-        mystack.pop();
+        Dwarf_Signed top = mystack->top();
+        mystack->pop();
 
         switch (a.opcode) {
           // Replace top with it's absolute value.
           case DW_OP_abs:
-            mystack.push(std::abs(top));
+            mystack->push(std::abs(top));
             break;
 
           // Negate top.
           case DW_OP_neg:
-            mystack.push(-top);
+            mystack->push(-top);
             break;
 
           // Bitwise complement of the top.
           case DW_OP_not:
-            mystack.push(~top);
+            mystack->push(~top);
             break;
 
           // Top value plus unsigned first operand.
           case DW_OP_plus_uconst:
-            mystack.push(top + a.op1);
+            mystack->push(top + a.op1);
             break;
 
           // Should not happen.
@@ -492,68 +499,68 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
       case DW_OP_shr:
       case DW_OP_shra:
       case DW_OP_xor: {
-        if (mystack.size() < 2) {
+        if (mystack->size() < 2) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
         switch (a.opcode) {
           // Bitwise and on top 2 values.
           case DW_OP_and:
-            mystack.push(e1 & e2);
+            mystack->push(e1 & e2);
             break;
 
           // Second div first from top (signed division).
           case DW_OP_div:
-            mystack.push(e2 / e1);
+            mystack->push(e2 / e1);
             break;
 
           // Second minus first from top.
           case DW_OP_minus:
-            mystack.push(e2 - e1);
+            mystack->push(e2 - e1);
             break;
 
           // Second modulo first from top.
           case DW_OP_mod:
-            mystack.push(e2 % e1);
+            mystack->push(e2 % e1);
             break;
 
           // Second times first from top.
           case DW_OP_mul:
-            mystack.push(e2 * e1);
+            mystack->push(e2 * e1);
             break;
 
           // Bitwise or of top 2 entries.
           case DW_OP_or:
-            mystack.push(e2 | e1);
+            mystack->push(e2 | e1);
             break;
 
           // Adds together top two entries.
           case DW_OP_plus:
-            mystack.push(e2 + e1);
+            mystack->push(e2 + e1);
             break;
 
           // Shift second entry to left by first entry.
           case DW_OP_shl:
-            mystack.push(e2 << e1);
+            mystack->push(e2 << e1);
             break;
 
           // Shift second entry to right by first entry.
           case DW_OP_shr:
-            mystack.push(e2 >> e1);
+            mystack->push(e2 >> e1);
             break;
 
           // Shift second entry arithmetically to right by first entry.
           case DW_OP_shra:
-            mystack.push(e2 >> e1);
+            mystack->push(e2 >> e1);
             break;
 
           // Bitwise XOR on top two entries.
           case DW_OP_xor:
-            mystack.push(e2 ^ e1);
+            mystack->push(e2 ^ e1);
             break;
 
           // Should not happen.
@@ -569,62 +576,62 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         //
 
       case DW_OP_le: {
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e2 <= e1);
+        mystack->push(e2 <= e1);
         break;
       }
 
       case DW_OP_ge: {
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e2 >= e1);
+        mystack->push(e2 >= e1);
         break;
       }
 
       case DW_OP_eq: {
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e2 == e1);
+        mystack->push(e2 == e1);
         break;
       }
 
       case DW_OP_lt: {
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e2 < e1);
+        mystack->push(e2 < e1);
         break;
       }
 
       case DW_OP_gt: {
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e2 > e1);
+        mystack->push(e2 > e1);
         break;
       }
 
       case DW_OP_ne: {
-        Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
-        Dwarf_Signed e2 = mystack.top();
-        mystack.pop();
+        Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
+        Dwarf_Signed e2 = mystack->top();
+        mystack->pop();
 
-        mystack.push(e2 != e1);
+        mystack->push(e2 != e1);
         break;
       }
 
@@ -639,11 +646,11 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
 
       case DW_OP_bra: {
         // Requires one stack element.
-        if (mystack.empty()) {
+        if (mystack->empty()) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
-        // Dwarf_Signed e1 = mystack.top();
-        mystack.pop();
+        // Dwarf_Signed e1 = mystack->top();
+        mystack->pop();
 
         Dwarf_Unsigned offset = a.off + static_cast<int16_t>(a.op1);
         int64_t idx = findOpIndexByOffset(offset);
@@ -680,10 +687,10 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
         // DW_OP_stack_alue operation terminates the expression.
         //
       case DW_OP_stack_value: {
-        if (mystack.empty()) {
+        if (mystack->empty()) {
           return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
         }
-        Dwarf_Addr value = mystack.top();
+        Dwarf_Addr value = mystack->top();
         return Result::Value(value);
       }
 
@@ -700,11 +707,11 @@ DwarfExpression::Result DwarfExpression::evaluate(const Context& context,
     }  // switch
   }    // for
 
-  if (mystack.empty()) {
+  if (mystack->empty()) {
     return Result::Error(ErrorCode::kStackIndexInvalid, cur_off);
   }
 
-  Dwarf_Addr value = mystack.top();
+  Dwarf_Addr value = mystack->top();
   return Result::Address(value);
 }  // end of DwarfExpression::evaluate
 
