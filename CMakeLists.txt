@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(BREAKPAD_ENABLED "enable breakpad test" ON)
+
 function(append_if condition value)
 	if (${condition})
 		foreach(variable ${ARGN})

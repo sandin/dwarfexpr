@@ -38,6 +38,8 @@ First you need process the minidump file with breakpad's minidump_stackwalk tool
 $ minidump_stackwalk -s minidump.dmp ./symbols > minidump.dmp.txt
 ```
 
+NOTE: you must pass in the `-s` parameter to print out the stack memory 
+
 And then convert minidump text file to dwarf context binary file use by dwarfexpr:
 
 ```

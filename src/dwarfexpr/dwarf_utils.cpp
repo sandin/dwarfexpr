@@ -444,7 +444,7 @@ std::pair<std::string, Dwarf_Unsigned> getFileNameAndLineNumber(
       break;
     }
 
-    if (lineaddr > pc) {
+    if (prev_linesrcfile && lineaddr > pc) {
       result.first.assign(prev_linesrcfile);
       result.second = prev_lineno;
       found = true;
