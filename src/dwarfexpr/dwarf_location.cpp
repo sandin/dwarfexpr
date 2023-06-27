@@ -134,7 +134,7 @@ DwarfExpression::Result DwarfLocation::evalValue(
     const DwarfExpression::Context& context, Dwarf_Addr pc) const {
   for (const LocationExpression& e : exprs_) {
     // Expression range is unlimited -> evaluate.
-    if (e.lowAddr == 0 && e.highAddr == MAX_DWARF_UNSIGNED) {
+    if (e.lowAddr == 0 && (e.highAddr == 0 || e.highAddr == MAX_DWARF_UNSIGNED)) {
       return e.expr.evaluate(context, pc);
     } else {
       // We have got program counter, check if it is in range of the expression.

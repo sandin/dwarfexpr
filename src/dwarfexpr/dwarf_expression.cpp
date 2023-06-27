@@ -31,7 +31,7 @@ bool DwarfExpression::loadExprFromLoclist(Dwarf_Loc_Head_c loclist_head,
   Dwarf_Small lle_value = 0;
   Dwarf_Unsigned rawval1 = 0;
   Dwarf_Unsigned rawval2 = 0;
-  Dwarf_Bool debug_addr_unavailable = false;
+  Dwarf_Bool debug_addr_unavailable = true;
   Dwarf_Addr lopc = 0;
   Dwarf_Addr hipc = 0;
   Dwarf_Unsigned loclist_expr_op_count = 0;
@@ -47,8 +47,10 @@ bool DwarfExpression::loadExprFromLoclist(Dwarf_Loc_Head_c loclist_head,
     return false;
   }
 
+  if (!debug_addr_unavailable) {
   *lowAddr = lopc;
   *highAddr = hipc;
+  }
   // List of atoms in one expression.
   Dwarf_Small op = 0;
   for (int j = 0; j < static_cast<int>(loclist_expr_op_count); j++) {

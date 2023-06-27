@@ -40,7 +40,8 @@ bool DwarfType::load() {
       return true;
     }
     // TODO: case DW_TAG_array_type:  // passthrough
-    case DW_TAG_typedef:  // passthrough
+    case DW_TAG_const_type:  // passthrough
+    case DW_TAG_typedef:     // passthrough
     case DW_TAG_pointer_type: {
       size_ = 8;  // TODO: 32-bit/64-bit
       Dwarf_Off type_ref =
@@ -87,6 +88,11 @@ std::string DwarfType::name() const {
       } else {
         return "void*";
       }
+    case DW_TAG_const_type:
+      if (base_type_ != nullptr) {
+        std::string base_type_name = base_type_->name();
+        return std::string("const ") + base_type_name;
+      }                            // else: return "unknown";
     case DW_TAG_typedef:           // passthrough
     case DW_TAG_class_type:        // passthrough
     case DW_TAG_structure_type:    // passthrough
@@ -116,8 +122,6 @@ size_t DwarfType::size() const {
   }
 }
 
-void DwarfType::dump() const {
-  this->DwarfTag::dump();
-}
+void DwarfType::dump() const { this->DwarfTag::dump(); }
 
 };  // namespace dwarfexpr

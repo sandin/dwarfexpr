@@ -80,13 +80,15 @@ DwarfVar::DwarfValue DwarfVar::evalValueAtLoc(
   size_t buf_size = 0;
   if (addr != 0) {
     size_t size = type->size();
-    bool found = memory(addr, size, &buf, &buf_size);
-    if (!found) {
-      printf("Error: can not read memory at addr: 0x%llx, size=0x%zx\n", addr,
-             size);
-      std::stringstream ss;
-      ss << "unknown(addr=" << std::hex << addr << ")";
-      return ss.str();
+    if (size != MAX_SIZE) {
+      bool found = memory(addr, size, &buf, &buf_size);
+      if (!found) {
+        printf("Error: can not read memory at addr: 0x%llx, size=0x%zx\n", addr,
+              size);
+        std::stringstream ss;
+        ss << "unknown(addr=" << std::hex << addr << ")";
+        return ss.str();
+      }
     }
   }
   return formatValue(type, buf, buf_size);
@@ -111,7 +113,11 @@ DwarfVar::DwarfValue DwarfVar::formatValue(DwarfType* type, char* buf,
   if (buf == nullptr) {
     return "0";
   }
-  return hexstring(buf, std::min(buf_size, type->size()));
+  size_t type_size = type->size();
+  if (type_size == MAX_SIZE) {
+    return "unknown type";
+  }
+  return hexstring(buf, std::min(buf_size, type_size));
 }
 
 void DwarfVar::dump() const {
