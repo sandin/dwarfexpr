@@ -1,2 +1,5 @@
 add_subdirectory(dwarfexpr)
 add_subdirectory(dwarf2line)
+if (${MINIDUMP_ENABLED})
+    add_subdirectory(minidump)
+endif()
