@@ -303,6 +303,15 @@ bool Minidump::ReadThreadListStream(const MDRawDirectory& directory) {
     return false;
   }
 
+  for (const MDRawThread& thread : threads_) {
+    MinidumpContext* context = new MinidumpContext();
+    if (!context->Read(this, thread.thread_context)) {
+      delete context;
+      return false;
+    }
+    contexts_.insert(std::make_pair(thread.thread_id, context));
+  }
+
   return true;
 }
 
@@ -360,6 +369,7 @@ bool Minidump::ReadExceptionStream(const MDRawDirectory& directory) {
 
   MinidumpContext* context = new MinidumpContext();
   if (!context->Read(this, exception_.thread_context)) {
+    delete context;
     return false;
   }
   contexts_.insert(std::make_pair(exception_.thread_id, context));
@@ -436,7 +446,6 @@ std::string Minidump::ReadString(off_t offset) {
 
   // restore the origin offset
   // SeekTo(origin_offset);
-
   return UTF16ToUTF8(string_utf16);
 }
 
@@ -506,22 +515,17 @@ bool Minidump::GetMemory(uint64_t address, size_t size, char** buffer,
     uint64_t end_addr = start_addr + m.memory.data_size;
     if (start_addr <= address && address < end_addr &&
         address + size <= end_addr) {
-      char* buf = static_cast<char*>(malloc(m.memory.data_size));
-      if (SeekTo(m.memory.rva) && ReadBytes(buf, m.memory.data_size)) {
-        *buffer_size = m.memory.data_size;
+      char* buf = static_cast<char*>(malloc(size));
+      off_t off = m.memory.rva + (address - start_addr);
+      if (SeekTo(off) && ReadBytes(buf, size)) {
         *buffer = buf;
+        *buffer_size = size;
         return true;
       }
       free(buf);
     }
   }
   return false;
-}
-
-bool Minidump::GetThreadStackMemory(MDRawThread* thread, char** buffer,
-                                    size_t* buffer_size) {
-  return GetMemory(thread->stack.start_of_memory_range,
-                   thread->stack.memory.data_size, buffer, buffer_size);
 }
 
 void Minidump::FreeMemory(char* buffer) { free(buffer); }
@@ -586,8 +590,10 @@ bool MinidumpContext::Read(Minidump* minidump,
     }
 
     MDRawContextARM64_Old context_arm64_old = {};
-    if (!minidump->ReadBytes(reinterpret_cast<char*>(&context_arm64_old),
-                             sizeof(MDRawContextARM64_Old))) {
+    size_t flags_size = sizeof(context_arm64_old.context_flags);
+    if (!minidump->ReadBytes(
+            reinterpret_cast<char*>(&context_arm64_old) + flags_size,
+            sizeof(MDRawContextARM64_Old) - flags_size)) {
       return false;
     }
 
@@ -605,11 +611,14 @@ bool MinidumpContext::Read(Minidump* minidump,
       return false;
     }
 
+    size_t flags_size = 0;
     switch (cpu_type) {
       case MD_CONTEXT_X86:
         context_.x86 = new MDRawContextX86();
-        if (!minidump->ReadBytes(reinterpret_cast<char*>(context_.x86),
-                                 sizeof(MDRawContextX86))) {
+        flags_size = sizeof(context_.x86->context_flags);
+        if (!minidump->ReadBytes(
+                reinterpret_cast<char*>(context_.x86) + flags_size,
+                sizeof(MDRawContextX86) - flags_size)) {
           delete context_.x86;
           return false;
         }
@@ -619,16 +628,20 @@ bool MinidumpContext::Read(Minidump* minidump,
         break;
       case MD_CONTEXT_ARM:
         context_.arm = new MDRawContextARM();
-        if (!minidump->ReadBytes(reinterpret_cast<char*>(context_.arm),
-                                 sizeof(MDRawContextARM))) {
+        flags_size = sizeof(context_.arm->context_flags);
+        if (!minidump->ReadBytes(
+                reinterpret_cast<char*>(context_.arm) + flags_size,
+                sizeof(MDRawContextARM) - flags_size)) {
           delete context_.arm;
           return false;
         }
         break;
       case MD_CONTEXT_ARM64:
         context_.arm64 = new MDRawContextARM64();
-        if (!minidump->ReadBytes(reinterpret_cast<char*>(context_.arm64),
-                                 sizeof(MDRawContextARM64))) {
+        flags_size = sizeof(context_.arm64->context_flags);
+        if (!minidump->ReadBytes(
+                reinterpret_cast<char*>(context_.arm64) + flags_size,
+                sizeof(MDRawContextARM64) - flags_size)) {
           delete context_.arm64;
           return false;
         }
@@ -640,6 +653,69 @@ bool MinidumpContext::Read(Minidump* minidump,
   }
 
   return true;
+}
+
+bool MinidumpContext::GetInstructionPointer(uint64_t* ip) const {
+ uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
+  switch (cpu_type) {
+    case MD_CONTEXT_X86:
+      *ip = static_cast<uint64_t>(context_.x86->eip);
+      return true;
+    case MD_CONTEXT_AMD64:
+      *ip = static_cast<uint64_t>(context_.amd64->rip);
+      return true;
+    case MD_CONTEXT_ARM:
+      *ip = static_cast<uint64_t>(context_.arm->iregs[MD_CONTEXT_ARM_REG_PC]);
+      return true;
+    case MD_CONTEXT_ARM64:
+      *ip = static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_PC]);
+      return true;
+    default:
+      printf("Error: unsupported cpu arch: %d\n", cpu_type);
+      return false;
+  }
+}
+
+bool MinidumpContext::GetStackPointer(uint64_t* sp) const {
+ uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
+  switch (cpu_type) {
+    case MD_CONTEXT_X86:
+      *sp = static_cast<uint64_t>(context_.x86->esp);
+      return true;
+    case MD_CONTEXT_AMD64:
+      *sp = static_cast<uint64_t>(context_.amd64->rsp);
+      return true;
+    case MD_CONTEXT_ARM:
+      *sp = static_cast<uint64_t>(context_.arm->iregs[MD_CONTEXT_ARM_REG_SP]);
+      return true;
+    case MD_CONTEXT_ARM64:
+      *sp = static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_SP]);
+      return true;
+    default:
+      printf("Error: unsupported cpu arch: %d\n", cpu_type);
+      return false;
+  }
+}
+
+bool MinidumpContext::GetFramePointer(uint64_t* fp) const {
+ uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
+  switch (cpu_type) {
+    case MD_CONTEXT_X86:
+      *fp = static_cast<uint64_t>(context_.x86->ebp);
+      return true;
+    case MD_CONTEXT_AMD64:
+      *fp = static_cast<uint64_t>(context_.amd64->rbp);
+      return true;
+    case MD_CONTEXT_ARM:
+      *fp = static_cast<uint64_t>(context_.arm->iregs[MD_CONTEXT_ARM_REG_FP]);
+      return true;
+    case MD_CONTEXT_ARM64:
+      *fp = static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_FP]);
+      return true;
+    default:
+      printf("Error: unsupported cpu arch: %d\n", cpu_type);
+      return false;
+  }
 }
 
 };  // namespace minidump

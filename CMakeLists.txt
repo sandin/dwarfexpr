@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(BREAKPAD_ENABLED "enable breakpad test" OFF)
 option(MINIDUMP_ENABLED "enable minidump parse" ON)
+option(CAPSTONE_ENABLED "enable capstone disasm" ON)
 
 function(append_if condition value)
 	if (${condition})

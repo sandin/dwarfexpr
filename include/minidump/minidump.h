@@ -44,8 +44,6 @@ class Minidump {
 
   bool GetMemory(uint64_t address, size_t size, char** buffer,
                  size_t* buffer_size);
-  bool GetThreadStackMemory(MDRawThread* thread, char** buffer,
-                            size_t* buffer_size);
   void FreeMemory(char* buffer);
 
   const MDRawHeader& GetHeader() const { return header_; }
@@ -101,6 +99,10 @@ class MinidumpContext {
   const MDRawContextAMD64* GetContextAMD64() const { return context_.amd64; };
   const MDRawContextARM* GetContextARM() const { return context_.arm; };
   const MDRawContextARM64* GetContextARM64() const { return context_.arm64; };
+
+  bool GetInstructionPointer(uint64_t* ip) const;
+  bool GetStackPointer(uint64_t* sp) const;
+  bool GetFramePointer(uint64_t* fp) const;
 
  private:
   union {

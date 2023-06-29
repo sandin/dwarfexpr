@@ -3,4 +3,9 @@ set(MINIDUMP_DUMP_SOURCES
 )
 
 add_executable(minidump_dump ${MINIDUMP_DUMP_SOURCES})
-target_link_libraries(minidump_dump minidump)
+if (${CAPSTONE_ENABLED})
+	add_definitions(-DCAPSTONE_ENABLED)
+	target_link_libraries(minidump_dump minidump capstone)
+else()
+	target_link_libraries(minidump_dump minidump)
+endif()
