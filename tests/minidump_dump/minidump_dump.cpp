@@ -67,8 +67,38 @@ void dump_context(Minidump* minidump, MinidumpContext* context) {
   switch (context->GetCpuType()) {
     case MD_CONTEXT_X86:
       break;
-    case MD_CONTEXT_AMD64:
+    case MD_CONTEXT_AMD64: {
+      auto ctx = context->GetContextAMD64();
+      // clang-format off
+      std::cout << "     " << "rax" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rax;
+      std::cout << "     " << "rdx" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rdx;
+      std::cout << "\n";
+      std::cout << "     " << "rcx" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rcx;
+      std::cout << "     " << "rbx" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rbx;
+      std::cout << "\n";
+      std::cout << "     " << "rsi" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rsi;
+      std::cout << "     " << "rdi" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rdi;
+      std::cout << "\n";
+      std::cout << "     " << "rbp" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rbp;
+      std::cout << "     " << "rsp" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rsp;
+      std::cout << "\n";
+      std::cout << "     " << "r8" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r8;
+      std::cout << "     " << "r9" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r9;
+      std::cout << "\n";
+      std::cout << "     " << "r10" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r10;
+      std::cout << "     " << "r11" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r11;
+      std::cout << "\n";
+      std::cout << "     " << "r12" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r12;
+      std::cout << "     " << "r13" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r13;
+      std::cout << "\n";
+      std::cout << "     " << "r14" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r14;
+      std::cout << "     " << "r15" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->r15;
+      std::cout << "\n";
+      std::cout << "     " << "rip" << " = " << "0x" << std::hex << std::setw(16) << std::setfill('0') << ctx->rip;
+      std::cout << "\n";
+      // clang-format on
       break;
+    }
     case MD_CONTEXT_ARM:
       break;
     case MD_CONTEXT_ARM64:  // passthrough
@@ -185,7 +215,7 @@ void dump_disasm(Minidump* minidump, uint64_t pc, uint32_t cpu_type) {}
 #endif  // #ifdef CAPSTONE_ENABLED
 
 void dump_thread(Minidump* minidump, MDRawThread* thread, bool crashed) {
-  std::cout << "Thread " << thread->thread_id;
+  std::cout << "Thread " << std::dec << thread->thread_id;
   if (crashed) {
     std::cout << " (crashed)";
   }
@@ -202,6 +232,8 @@ void dump_thread(Minidump* minidump, MDRawThread* thread, bool crashed) {
     context->GetFramePointer(&fp);
     context->GetInstructionPointer(&pc);
     cpu_type = context->GetCpuType();
+  } else {
+    std::cerr << "Can not get context of thread\n";
   }
   std::cout << "\n";
 
@@ -235,7 +267,14 @@ void dump_module(Minidump* minidump, MDRawModule* raw_module) {
             << raw_module->base_of_image << " - ";
   std::cout << "0x" << std::hex << std::setw(16) << std::setfill('0')
             << (raw_module->base_of_image + raw_module->size_of_image - 1);
-  std::cout << "   " << minidump->ReadString(raw_module->module_name_rva)
+  std::cout << "   " << minidump->ReadString(raw_module->module_name_rva);
+  std::cout << " (size="
+            << "0x" << std::hex << raw_module->size_of_image;
+  std::cout << ", checksum="
+            << "0x" << std::hex << raw_module->checksum;
+  std::cout << ", timedateStamp="
+            << "0x" << std::hex << raw_module->time_date_stamp;
+  std::cout << ")"
             << "\n";
 }
 
@@ -290,6 +329,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Saved memories:\n";
     auto memories = minidump.GetMemories();
+    sort(memories.begin(), memories.end(), [](const auto& m1, const auto& m2) {
+      return m2.start_of_memory_range > m1.start_of_memory_range;
+    });
     for (auto memory : memories) {
       dump_memory(&minidump, &memory);
     }

@@ -341,8 +341,10 @@ bool Minidump::ReadModuleListStream(const MDRawDirectory& directory) {
 // static
 void Minidump::DumpModule(const MDRawModule& module) {
   printf("\tModule: base_of_image=0x%" PRIx64 ", size_of_image=0x%" PRIx32
-         ", module_name=0x%" PRIx32 "\n",
-         module.base_of_image, module.size_of_image, module.module_name_rva);
+         ", checksum=0x%" PRIx32 ", time_date_stamp=0x%" PRIx32
+         ", module_name_rva=0x%" PRIx32 "\n",
+         module.base_of_image, module.size_of_image, module.checksum,
+         module.time_date_stamp, module.module_name_rva);
 }
 
 bool Minidump::ReadMemoryListStream(const MDRawDirectory& directory) {
@@ -372,7 +374,7 @@ bool Minidump::ReadExceptionStream(const MDRawDirectory& directory) {
     delete context;
     return false;
   }
-  contexts_.insert(std::make_pair(exception_.thread_id, context));
+  contexts_[exception_.thread_id] = context;
   return true;
 }
 
@@ -656,7 +658,7 @@ bool MinidumpContext::Read(Minidump* minidump,
 }
 
 bool MinidumpContext::GetInstructionPointer(uint64_t* ip) const {
- uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
+  uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
   switch (cpu_type) {
     case MD_CONTEXT_X86:
       *ip = static_cast<uint64_t>(context_.x86->eip);
@@ -668,7 +670,8 @@ bool MinidumpContext::GetInstructionPointer(uint64_t* ip) const {
       *ip = static_cast<uint64_t>(context_.arm->iregs[MD_CONTEXT_ARM_REG_PC]);
       return true;
     case MD_CONTEXT_ARM64:
-      *ip = static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_PC]);
+      *ip =
+          static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_PC]);
       return true;
     default:
       printf("Error: unsupported cpu arch: %d\n", cpu_type);
@@ -677,7 +680,7 @@ bool MinidumpContext::GetInstructionPointer(uint64_t* ip) const {
 }
 
 bool MinidumpContext::GetStackPointer(uint64_t* sp) const {
- uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
+  uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
   switch (cpu_type) {
     case MD_CONTEXT_X86:
       *sp = static_cast<uint64_t>(context_.x86->esp);
@@ -689,7 +692,8 @@ bool MinidumpContext::GetStackPointer(uint64_t* sp) const {
       *sp = static_cast<uint64_t>(context_.arm->iregs[MD_CONTEXT_ARM_REG_SP]);
       return true;
     case MD_CONTEXT_ARM64:
-      *sp = static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_SP]);
+      *sp =
+          static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_SP]);
       return true;
     default:
       printf("Error: unsupported cpu arch: %d\n", cpu_type);
@@ -698,7 +702,7 @@ bool MinidumpContext::GetStackPointer(uint64_t* sp) const {
 }
 
 bool MinidumpContext::GetFramePointer(uint64_t* fp) const {
- uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
+  uint32_t cpu_type = context_flags_ & MD_CONTEXT_CPU_MASK;
   switch (cpu_type) {
     case MD_CONTEXT_X86:
       *fp = static_cast<uint64_t>(context_.x86->ebp);
@@ -710,7 +714,8 @@ bool MinidumpContext::GetFramePointer(uint64_t* fp) const {
       *fp = static_cast<uint64_t>(context_.arm->iregs[MD_CONTEXT_ARM_REG_FP]);
       return true;
     case MD_CONTEXT_ARM64:
-      *fp = static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_FP]);
+      *fp =
+          static_cast<uint64_t>(context_.arm64->iregs[MD_CONTEXT_ARM64_REG_FP]);
       return true;
     default:
       printf("Error: unsupported cpu arch: %d\n", cpu_type);
