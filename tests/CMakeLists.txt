@@ -1,4 +1,6 @@
-add_subdirectory(dwarfexpr)
+if (${LIBDWARF_ENABLED})
+    add_subdirectory(dwarfexpr)
+endif()
 if (${BREAKPAD_ENABLED})
     add_subdirectory(breakpad_demo)
 endif()
